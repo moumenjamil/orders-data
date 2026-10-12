@@ -85,10 +85,13 @@ def orders_daily():
         try:
             with conn.cursor() as cur:
                 cur.execute("TRUNCATE raw.orders")
-                cur.copy_expert(
-                    f"COPY raw.orders ({', '.join(COLUMNS)}) "
-                    "FROM STDIN WITH (FORMAT csv, HEADER true)",
-                    io.StringIO(data))
+                copy_sql = (f"COPY raw.orders ({', '.join(COLUMNS)}) "
+                            "FROM STDIN WITH (FORMAT csv, HEADER true)")
+                if hasattr(cur, "copy_expert"):      # psycopg2 (e.g. the local lab image)
+                    cur.copy_expert(copy_sql, io.StringIO(data))
+                else:                                # psycopg 3 (e.g. Astro Runtime 3.3)
+                    with cur.copy(copy_sql) as copy:
+                        copy.write(data)
                 cur.execute("UPDATE raw.orders SET _source_key = %s",
                             (f"s3://{BUCKET}/{key}",))
                 cur.execute("SELECT count(*) FROM raw.orders")
