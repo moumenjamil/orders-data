@@ -18,3 +18,4 @@ Generated from `ai-qa-system/data-lab` by `data-lab/cloud/make-orders-data-repo.
 connections and secrets live in the Astro Deployment, never in this repo.
 
 Tests for this pipeline run automatically on every pull request.
+See the data rules in Confluence (space DATA).
