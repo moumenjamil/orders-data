@@ -59,6 +59,20 @@ jobs:
           deploy-type: image-and-dags
           wake-on-deploy: true
 
+      - name: Keep the CI environment awake while the PR is tested
+        # A Development deployment hibernates and a deploy ends a wake-up
+        # override; "live" must mean Airflow answers, so wake it for 2 h
+        # and wait until it is HEALTHY before telling GitHub (D7-32).
+        run: |
+          astro deployment wake-up "${{ vars.ASTRO_DEPLOYMENT_ID }}" --for 2h
+          for i in $(seq 1 36); do
+            s=$(astro deployment inspect "${{ vars.ASTRO_DEPLOYMENT_ID }}" --key metadata.status)
+            echo "status: $s"
+            [ "$s" = "HEALTHY" ] && exit 0
+            sleep 10
+          done
+          echo "the deployment did not become HEALTHY within 6 minutes"; exit 1
+
       - name: Tell GitHub the commit is live
         if: success()
         env:
