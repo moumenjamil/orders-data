@@ -57,6 +57,10 @@ jobs:
         with:
           deployment-id: ${{ vars.ASTRO_DEPLOYMENT_ID }}
           deploy-type: image-and-dags
+          # Always deploy: by default the action skips a push that changes
+          # no project files (an empty or docs-only commit), and this job
+          # would then report a commit as live that never was.
+          skip-unchanged: false
           wake-on-deploy: true
 
       - name: Keep the CI environment awake while the PR is tested
