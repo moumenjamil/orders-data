@@ -1,0 +1,14 @@
+name: argus_lab
+version: "1.0.0"
+config-version: 2
+profile: argus_lab
+
+model-paths: ["models"]
+test-paths: ["tests"]
+
+models:
+  argus_lab:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

@@ -1,0 +1,72 @@
+# The data team's CI/CD: every push to main and every PR commit is
+# deployed to the Astronomer Deployment, and GitHub is told the commit is
+# live (a GitHub deployment with status "success", environment
+# "astro-ci"), exactly as an app's CI does. Argus waits for that before it
+# tests a PR's data (the same deployment gate as for web/BE repos).
+#
+# Lab setup: one Deployment, so a PR's commit replaces what runs there
+# until the next deploy. Teams with more budget use one preview
+# Deployment per PR.
+name: Deploy to Astro
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: astro-ci            # one deploy at a time to the one Deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
+      COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.COMMIT }}
+
+      - name: Record the deployed commit next to the DAGs
+        run: echo "$COMMIT" > dags/.deployed_commit
+
+      - name: Tell GitHub a deployment of this commit started
+        id: gh_deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # required_contexts [] : do not wait for other checks to create it
+          id=$(jq -n --arg ref "$COMMIT" \
+                 '{ref:$ref, environment:"astro-ci", auto_merge:false, required_contexts:[], description:"Astro deploy"}' \
+               | gh api "repos/${{ github.repository }}/deployments" --input - --jq .id)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          gh api "repos/${{ github.repository }}/deployments/$id/statuses" -f state=in_progress >/dev/null
+
+      - name: Install Astro CLI
+        uses: astronomer/setup-astro-cli@v0.0.1
+
+      - name: Deploy to Astro
+        uses: astronomer/deploy-action@v0.14.0
+        with:
+          deployment-id: ${{ vars.ASTRO_DEPLOYMENT_ID }}
+          deploy-type: image-and-dags
+          wake-on-deploy: true
+
+      - name: Tell GitHub the commit is live
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/${{ github.repository }}/deployments/${{ steps.gh_deploy.outputs.id }}/statuses" -f state=success -f environment=astro-ci >/dev/null
+
+      - name: Tell GitHub the deploy failed
+        if: failure() && steps.gh_deploy.outputs.id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/${{ github.repository }}/deployments/${{ steps.gh_deploy.outputs.id }}/statuses" -f state=failure >/dev/null

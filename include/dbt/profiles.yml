@@ -1,0 +1,37 @@
+# Targets mirror a team setup: dev (personal), ci (PR validation),
+# prod. Each builds into the warehouse schema of the same name.
+# Credentials come only from environment variables. DBT_WH_SSLMODE:
+# 'prefer' (local lab) unless set, 'require' for a cloud warehouse.
+argus_lab:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('DBT_WH_HOST') }}"
+      port: "{{ env_var('DBT_WH_PORT') | int }}"
+      dbname: "{{ env_var('DBT_WH_DBNAME') }}"
+      user: "{{ env_var('DBT_WH_USER') }}"
+      password: "{{ env_var('DBT_WH_PASSWORD') }}"
+      sslmode: "{{ env_var('DBT_WH_SSLMODE', 'prefer') }}"
+      schema: dev
+      threads: 2
+    ci:
+      type: postgres
+      host: "{{ env_var('DBT_WH_HOST') }}"
+      port: "{{ env_var('DBT_WH_PORT') | int }}"
+      dbname: "{{ env_var('DBT_WH_DBNAME') }}"
+      user: "{{ env_var('DBT_WH_USER') }}"
+      password: "{{ env_var('DBT_WH_PASSWORD') }}"
+      sslmode: "{{ env_var('DBT_WH_SSLMODE', 'prefer') }}"
+      schema: ci
+      threads: 2
+    prod:
+      type: postgres
+      host: "{{ env_var('DBT_WH_HOST') }}"
+      port: "{{ env_var('DBT_WH_PORT') | int }}"
+      dbname: "{{ env_var('DBT_WH_DBNAME') }}"
+      user: "{{ env_var('DBT_WH_USER') }}"
+      password: "{{ env_var('DBT_WH_PASSWORD') }}"
+      sslmode: "{{ env_var('DBT_WH_SSLMODE', 'prefer') }}"
+      schema: prod
+      threads: 2
