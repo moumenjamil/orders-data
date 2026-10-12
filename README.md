@@ -16,3 +16,5 @@ data.
 
 Generated from `ai-qa-system/data-lab` by `data-lab/cloud/make-orders-data-repo.sh`;
 connections and secrets live in the Astro Deployment, never in this repo.
+
+Cancelled orders: see ORD-1.
