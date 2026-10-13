@@ -2,11 +2,15 @@ version: 2
 
 models:
   - name: orders_daily
-    description: One row per order date. Paid = PAID or SHIPPED.
+    description: One row per order date. Paid = PAID or SHIPPED. Cancelled = CANCELLED.
     columns:
       - name: order_date
         data_tests: [not_null, unique]
       - name: order_count
         data_tests: [not_null]
       - name: total_amount
+        data_tests: [not_null]
+      - name: cancelled_order_count
+        data_tests: [not_null]
+      - name: cancelled_amount
         data_tests: [not_null]
