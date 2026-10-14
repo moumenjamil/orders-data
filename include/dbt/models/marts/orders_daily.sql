@@ -1,3 +1,4 @@
+-- Daily orders report for finance (one row per order date).
 select
     order_date,
     count(*)                                              as order_count,
