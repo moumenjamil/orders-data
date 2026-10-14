@@ -1,1 +1,2 @@
 echo cleanup
+echo done
