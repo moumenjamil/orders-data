@@ -12,3 +12,4 @@ RUN python -m venv /tmp/uv-tool \
 ENV ARGUS_LAB_DBT_BIN=/usr/local/airflow/dbt-venv/bin/dbt \
     ARGUS_LAB_DBT_PROJECT_DIR=/usr/local/airflow/include/dbt \
     DBT_LOG_PATH=/tmp/dbt-logs
+# runtime bump
