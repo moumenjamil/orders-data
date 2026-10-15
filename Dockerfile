@@ -7,7 +7,7 @@ ENV UV_PYTHON_INSTALL_DIR=/usr/local/airflow/.uv-python
 RUN python -m venv /tmp/uv-tool \
  && /tmp/uv-tool/bin/pip install --no-cache-dir uv \
  && /tmp/uv-tool/bin/uv venv --python 3.12 /usr/local/airflow/dbt-venv \
- && /tmp/uv-tool/bin/uv pip install --no-cache --python /usr/local/airflow/dbt-venv/bin/python dbt-core==1.10.15 dbt-postgres==1.11.0 \
+ && /tmp/uv-tool/bin/uv pip install --no-cache --python /usr/local/airflow/dbt-venv/bin/python dbt-core==1.10.15 dbt-postgres==1.11.0 'dbt-snowflake>=1.10,<1.12' \
  && rm -rf /tmp/uv-tool
 ENV ARGUS_LAB_DBT_BIN=/usr/local/airflow/dbt-venv/bin/dbt \
     ARGUS_LAB_DBT_PROJECT_DIR=/usr/local/airflow/include/dbt \
