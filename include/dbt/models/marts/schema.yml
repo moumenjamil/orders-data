@@ -5,12 +5,17 @@ models:
     description: One row per order date. Paid = PAID or SHIPPED. Cancelled = CANCELLED.
     columns:
       - name: order_date
+        description: The day the orders were created (UTC).
         data_tests: [not_null, unique]
       - name: order_count
+        description: All orders of the day, whatever their status.
         data_tests: [not_null]
       - name: total_amount
+        description: Sum of amount of all orders of the day.
         data_tests: [not_null]
       - name: cancelled_order_count
+        description: Orders of the day with status CANCELLED.
         data_tests: [not_null]
       - name: cancelled_amount
+        description: Sum of amount of the CANCELLED orders of the day (0 when none).
         data_tests: [not_null]
