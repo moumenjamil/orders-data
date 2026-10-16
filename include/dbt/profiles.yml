@@ -1,5 +1,6 @@
 # Targets mirror a team setup: dev (personal), ci (PR validation),
 # prod. Each builds into the warehouse schema of the same name.
+# snowflake: the same models in Snowflake ORDERS_DB.CI (D7-43).
 # Credentials come only from environment variables. DBT_WH_SSLMODE:
 # 'prefer' (local lab) unless set, 'require' for a cloud warehouse.
 argus_lab:
@@ -34,4 +35,16 @@ argus_lab:
       password: "{{ env_var('DBT_WH_PASSWORD') }}"
       sslmode: "{{ env_var('DBT_WH_SSLMODE', 'prefer') }}"
       schema: prod
+      threads: 2
+    # Same models on Snowflake (D7-43): key-pair login, no password.
+    # DBT_SF_PRIVATE_KEY is the key body (base64), set as an Astro secret.
+    snowflake:
+      type: snowflake
+      account: "{{ env_var('DBT_SF_ACCOUNT', '') }}"
+      user: "{{ env_var('DBT_SF_USER', '') }}"
+      private_key: "{{ env_var('DBT_SF_PRIVATE_KEY', '') }}"
+      role: PIPELINE_ROLE
+      warehouse: ORDERS_WH
+      database: ORDERS_DB
+      schema: CI
       threads: 2

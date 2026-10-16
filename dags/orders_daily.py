@@ -2,7 +2,8 @@
 
 source Postgres (shop.orders)
   -> CSV in S3-compatible storage  s3://raw/orders/dt=<run date>/<run id>.csv
-  -> warehouse raw.orders (full snapshot, replaced each run)
+  -> warehouse raw.orders (full snapshot, replaced each run): Postgres,
+     or Snowflake ORDERS_DB.RAW.ORDERS when dbt_target is "snowflake"
   -> dbt build (models + tests) into the target schema (dev / ci / prod),
      and in the same task dbt's run_results.json (plus build.json with the
      deployed commit) to s3://dbt-artifacts/orders_daily/<run id>/ —
@@ -11,7 +12,7 @@ source Postgres (shop.orders)
 Argus triggers this through the Airflow REST API and may pass
 {"dbt_target": "ci"} as run conf, the way a CI job validates a PR.
 Credentials come from Airflow Connections (lab_source,
-lab_warehouse_loader, lab_s3), never from this file.
+lab_warehouse_loader, lab_snowflake_loader, lab_s3), never from this file.
 """
 from __future__ import annotations
 
@@ -47,7 +48,7 @@ COLUMNS = ["id", "customer_id", "status", "amount", "payment_id",
     schedule=None,
     start_date=datetime(2026, 1, 1),
     catchup=False,
-    params={"dbt_target": Param("dev", enum=["dev", "ci", "prod"])},
+    params={"dbt_target": Param("dev", enum=["dev", "ci", "prod", "snowflake"])},
     tags=["argus-data-lab"],
 )
 def orders_daily():
@@ -77,9 +78,11 @@ def orders_daily():
         return key
 
     @task
-    def load_raw_orders(key: str) -> int:
+    def load_raw_orders(key: str, params=None) -> int:
         data = S3Hook(aws_conn_id="lab_s3").read_key(
             key=key, bucket_name=BUCKET)
+        if params["dbt_target"] == "snowflake":
+            return _load_snowflake(data, key)
         wh = PostgresHook(postgres_conn_id="lab_warehouse_loader")
         conn = wh.get_conn()
         try:
@@ -144,6 +147,35 @@ def orders_daily():
         return f"{prefix}/run_results.json"
 
     load_raw_orders(extract_orders_to_s3()) >> dbt_build()
+
+
+def _load_snowflake(data: str, key: str) -> int:
+    """The same snapshot into Snowflake ORDERS_DB.RAW.ORDERS (D7-43).
+
+    Imported here so the local lab (no Snowflake provider) still loads
+    the DAG. Empty CSV fields are NULL, as with Postgres COPY.
+    """
+    from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+
+    rows = list(csv.reader(io.StringIO(data)))[1:]
+    rows = [[v if v != "" else None for v in r] for r in rows]
+    conn = SnowflakeHook(snowflake_conn_id="lab_snowflake_loader").get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("BEGIN")
+        cur.execute("DELETE FROM ORDERS_DB.RAW.ORDERS")
+        if rows:
+            cur.executemany(
+                f"INSERT INTO ORDERS_DB.RAW.ORDERS ({', '.join(COLUMNS)}, _SOURCE_KEY) "
+                f"VALUES ({', '.join(['%s'] * (len(COLUMNS) + 1))})",
+                [r + [f"s3://{BUCKET}/{key}"] for r in rows])
+        cur.execute("SELECT count(*) FROM ORDERS_DB.RAW.ORDERS")
+        loaded = cur.fetchone()[0]
+        cur.execute("COMMIT")
+    finally:
+        conn.close()
+    print(f"Loaded {loaded} rows into Snowflake ORDERS_DB.RAW.ORDERS")
+    return loaded
 
 
 orders_daily()
