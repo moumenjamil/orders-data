@@ -9,6 +9,8 @@ dbt project behind the orders data, deployed to Astronomer (Astro).
   and dbt's results to `s3://dbt-artifacts/orders_daily/<run id>/`.
 - `dags/customers_daily.py` — an upstream pipeline orders_daily depends on.
 - `include/dbt/` — the dbt project (staging + marts, tests).
+- `include/gx/` — the team's Great Expectations rules for the raw orders file,
+  checked before it is loaded (a broken rule stops the run).
 
 Every push to `main` and every PR commit is deployed by
 `.github/workflows/deploy.yml`, which also tells GitHub the commit is live

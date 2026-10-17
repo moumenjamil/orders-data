@@ -8,7 +8,11 @@ RUN python -m venv /tmp/uv-tool \
  && /tmp/uv-tool/bin/pip install --no-cache-dir uv \
  && /tmp/uv-tool/bin/uv venv --python 3.12 /usr/local/airflow/dbt-venv \
  && /tmp/uv-tool/bin/uv pip install --no-cache --python /usr/local/airflow/dbt-venv/bin/python dbt-core==1.10.15 dbt-postgres==1.11.0 'dbt-snowflake>=1.10,<1.12' \
+ && /tmp/uv-tool/bin/uv venv --python 3.12 /usr/local/airflow/gx-venv \
+ && /tmp/uv-tool/bin/uv pip install --no-cache --python /usr/local/airflow/gx-venv/bin/python great_expectations==1.24.0 pandas \
  && rm -rf /tmp/uv-tool
 ENV ARGUS_LAB_DBT_BIN=/usr/local/airflow/dbt-venv/bin/dbt \
     ARGUS_LAB_DBT_PROJECT_DIR=/usr/local/airflow/include/dbt \
+    ARGUS_LAB_GX_PYTHON=/usr/local/airflow/gx-venv/bin/python \
+    ARGUS_LAB_GX_DIR=/usr/local/airflow/include/gx \
     DBT_LOG_PATH=/tmp/dbt-logs
