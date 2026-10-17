@@ -2,6 +2,9 @@
 
 source Postgres (shop.orders)
   -> CSV in S3-compatible storage  s3://raw/orders/dt=<run date>/<run id>.csv
+  -> the team's Great Expectations rules on that file (D7-44); their result
+     to s3://dbt-artifacts/orders_daily/<run id>/gx_results.json, and a
+     broken rule stops the run before anything is loaded
   -> warehouse raw.orders (full snapshot, replaced each run): Postgres,
      or Snowflake ORDERS_DB.RAW.ORDERS when dbt_target is "snowflake"
   -> dbt build (models + tests) into the target schema (dev / ci / prod),
@@ -39,6 +42,9 @@ DBT_PROJECT_DIR = os.environ.get("ARGUS_LAB_DBT_PROJECT_DIR", "/opt/airflow/dbt"
 # local lab (empty).
 _COMMIT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".deployed_commit")
 DEPLOYED_COMMIT = (open(_COMMIT_FILE).read().strip() if os.path.exists(_COMMIT_FILE) else "")
+# Great Expectations in its own virtualenv (like dbt), and the team's rules.
+GX_PYTHON = os.environ.get("ARGUS_LAB_GX_PYTHON", "/home/airflow/gx-venv/bin/python")
+GX_DIR = os.environ.get("ARGUS_LAB_GX_DIR", "/opt/airflow/gx")
 COLUMNS = ["id", "customer_id", "status", "amount", "payment_id",
            "created_at", "updated_at"]
 
@@ -76,6 +82,38 @@ def orders_daily():
                        replace=True)
         print(f"Extracted {len(rows)} orders to s3://{BUCKET}/{key}")
         return key
+
+    @task
+    def check_raw_with_gx(key: str) -> str:
+        """The team's GX rules on the raw file, before it is loaded.
+
+        The result goes to the artifacts bucket next to dbt's, also when a
+        rule broke (that is when it matters); the task then fails, so the
+        load never runs on bad data.
+        """
+        run_id = get_current_context()["run_id"]
+        s3 = S3Hook(aws_conn_id="lab_s3")
+        work = f"/tmp/gx/{re.sub(r'[^A-Za-z0-9_.-]', '_', run_id)}"
+        os.makedirs(work, exist_ok=True)
+        with open(f"{work}/orders.csv", "w") as f:
+            f.write(s3.read_key(key=key, bucket_name=BUCKET))
+        proc = subprocess.run(
+            [GX_PYTHON, f"{GX_DIR}/check_raw_orders.py", f"{work}/orders.csv", f"{work}/gx_results.json"],
+            capture_output=True, text=True, env={**os.environ, "GX_ANALYTICS_ENABLED": "false"})
+        print(proc.stdout[-5000:])
+        if proc.returncode not in (0, 1):
+            print(proc.stderr[-5000:])
+        out = f"orders_daily/{run_id}/gx_results.json"
+        if os.path.exists(f"{work}/gx_results.json"):
+            if not s3.check_for_bucket(ARTIFACTS_BUCKET):
+                s3.create_bucket(bucket_name=ARTIFACTS_BUCKET)
+            s3.load_file(f"{work}/gx_results.json", key=out, bucket_name=ARTIFACTS_BUCKET, replace=True)
+            print(f"Uploaded s3://{ARTIFACTS_BUCKET}/{out}")
+        if proc.returncode == 1:
+            raise RuntimeError("the raw orders broke the team's GX rules: not loaded")
+        if proc.returncode != 0:
+            raise RuntimeError(f"GX could not check the raw orders (exit code {proc.returncode})")
+        return out
 
     @task
     def load_raw_orders(key: str, params=None) -> int:
@@ -146,7 +184,8 @@ def orders_daily():
             raise FileNotFoundError(f"dbt wrote no run_results.json ({results})")
         return f"{prefix}/run_results.json"
 
-    load_raw_orders(extract_orders_to_s3()) >> dbt_build()
+    key = extract_orders_to_s3()
+    check_raw_with_gx(key) >> load_raw_orders(key) >> dbt_build()
 
 
 def _load_snowflake(data: str, key: str) -> int:
