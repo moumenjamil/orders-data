@@ -88,6 +88,22 @@ jobs:
         if: vars.AIRFLOW_HOST == 'local'
         run: echo "commit $COMMIT is deployed by deploy-local.sh on the team's machine"
 
+      - name: Deploy the Glue job's code to S3
+        # D7-45: the AWS pipeline's transformation runs as the Glue job
+        # orders-daily-curate, which reads its code from S3. The pipeline's
+        # own AWS login (repo secrets) uploads it; the repo variable
+        # AWS_GLUE_SCRIPTS_URI (s3://.../glue-scripts/) turns this step on.
+        # Lab setup: one job, so a PR's code replaces what runs there until
+        # the next deploy, as with the one Airflow.
+        if: vars.AWS_GLUE_SCRIPTS_URI != ''
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_PIPELINE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_PIPELINE_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          aws s3 cp glue/orders_daily_curate.py "${{ vars.AWS_GLUE_SCRIPTS_URI }}orders_daily_curate.py"
+          echo "$COMMIT" | aws s3 cp - "${{ vars.AWS_GLUE_SCRIPTS_URI }}orders_daily_curate.commit"
+
       - name: Tell GitHub the commit is live
         if: success()
         env:
