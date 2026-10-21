@@ -46,12 +46,12 @@ job = Job(glue)
 job.init(args["JOB_NAME"], args)
 
 db, src, dst, path = args["database"], args["source_path"].rstrip("/"), args["target_table"], args["target_path"]
+# Simpler: read the raw orders through the catalog table the pipeline keeps,
+# instead of parsing the CSV files ourselves.
+raw = spark.table(f"{db}.raw_orders")
 if run_date is None:
-    days = (spark.read.option("header", True).schema(RAW_SCHEMA).option("basePath", f"{src}/")
-            .csv(f"{src}/dt=*/").select("dt").distinct().collect())
-    run_date = str(max(r["dt"] for r in days))
-orders = (spark.read.option("header", True).option("timestampFormat", "yyyy-MM-dd HH:mm:ss")
-          .option("mode", "FAILFAST").schema(RAW_SCHEMA).csv(f"{src}/dt={run_date}/"))
+    run_date = raw.agg(F.max("dt")).first()[0]
+orders = raw.where(F.col("dt") == run_date)
 
 paid = F.col("status").isin("PAID", "SHIPPED")
 cancelled = F.col("status") == "CANCELLED"
