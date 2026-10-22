@@ -104,6 +104,29 @@ jobs:
           aws s3 cp glue/orders_daily_curate.py "${{ vars.AWS_GLUE_SCRIPTS_URI }}orders_daily_curate.py"
           echo "$COMMIT" | aws s3 cp - "${{ vars.AWS_GLUE_SCRIPTS_URI }}orders_daily_curate.commit"
 
+      - name: Install the Databricks CLI
+        if: vars.DBX_WAREHOUSE_ID != ''
+        uses: databricks/setup-cli@main
+
+      - name: Deploy the Databricks job (bundle)
+        # D7-47: the Databricks pipeline is the job orders_daily_dbx,
+        # described by the bundle in databricks/. The pipeline's own login
+        # (service principal orders-pipeline, OAuth; repo secrets) deploys
+        # it; the repo variable DBX_WAREHOUSE_ID turns this step on.
+        # Lab setup: one workspace, so a PR's job replaces what runs there
+        # until the next deploy, as with the one Airflow.
+        if: vars.DBX_WAREHOUSE_ID != ''
+        working-directory: databricks
+        env:
+          DATABRICKS_HOST: ${{ vars.DBX_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DBX_PIPELINE_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DBX_PIPELINE_CLIENT_SECRET }}
+          BUNDLE_VAR_warehouse_id: ${{ vars.DBX_WAREHOUSE_ID }}
+          BUNDLE_VAR_assertix_principal: ${{ vars.DBX_ASSERTIX_PRINCIPAL }}
+        run: |
+          databricks bundle validate
+          databricks bundle deploy --target lab
+
       - name: Tell GitHub the commit is live
         if: success()
         env:
