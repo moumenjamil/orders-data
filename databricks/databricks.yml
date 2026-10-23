@@ -1,0 +1,41 @@
+# The orders pipeline on Databricks (T1): a Databricks job with two SQL steps
+# on a SQL warehouse, deployed from this repo by CI (Databricks Asset Bundles).
+#   extract_orders      today's snapshot of the shop's orders (read through the
+#                       Lakehouse Federation catalog "shop") -> orders_lab.raw_orders, one per day (dt)
+#   build_orders_daily  orders_lab.orders_daily from the latest snapshot
+# CI passes the warehouse and Assertix' service principal (repo variables).
+bundle:
+  name: orders_daily_dbx
+
+variables:
+  warehouse_id:
+    description: The SQL warehouse that runs the job's SQL
+  assertix_principal:
+    description: Application id of Assertix' service principal (may run and watch the job)
+
+targets:
+  lab:
+    default: true
+
+resources:
+  jobs:
+    orders_daily_dbx:
+      name: orders_daily_dbx
+      description: "Shop orders -> raw snapshot per day -> daily report (orders_lab)"
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: extract_orders
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ./sql/01_extract_orders.sql
+        - task_key: build_orders_daily
+          depends_on:
+            - task_key: extract_orders
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ./sql/02_orders_daily.sql
+      permissions:
+        - service_principal_name: ${var.assertix_principal}
+          level: CAN_MANAGE_RUN
