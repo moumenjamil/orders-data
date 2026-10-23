@@ -12,4 +12,6 @@ DELETE FROM workspace.orders_lab.raw_orders WHERE dt = current_date();
 INSERT INTO workspace.orders_lab.raw_orders
 SELECT CAST(id AS BIGINT), CAST(customer_id AS BIGINT), CAST(status AS STRING), CAST(amount AS DECIMAL(12,2)),
        CAST(payment_id AS STRING), CAST(created_at AS TIMESTAMP), CAST(updated_at AS TIMESTAMP), current_date()
-FROM shop.public.orders;
+FROM shop.public.orders
+-- Orders untouched for two weeks are final and already in earlier snapshots: read only the recent ones.
+WHERE updated_at >= current_date() - INTERVAL 14 DAYS;
