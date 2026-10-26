@@ -39,3 +39,20 @@ resources:
       permissions:
         - service_principal_name: ${var.assertix_principal}
           level: CAN_MANAGE_RUN
+
+  # T1b (D7-48): the same orders as Delta Live Tables, read straight from the shop, with the
+  # team's data rules (expectations) recorded on every update. Warn-only: no row is dropped,
+  # so every shop order is in orders_clean and a broken rule shows in the event log.
+  pipelines:
+    orders_daily_dlt:
+      name: orders_daily_dlt
+      serverless: true
+      catalog: workspace
+      schema: orders_lab
+      development: true
+      libraries:
+        - file:
+            path: ./dlt/orders_dlt.sql
+      permissions:
+        - service_principal_name: ${var.assertix_principal}
+          level: CAN_RUN
