@@ -9,10 +9,10 @@ CREATE OR REFRESH MATERIALIZED VIEW orders_clean (
 )
 COMMENT 'Assertix lab: the shop orders, with the team rules checked'
 AS SELECT
-  CAST(id AS BIGINT) AS id, CAST(customer_id AS BIGINT) AS customer_id, CAST(status AS STRING) AS status,
+  CAST(id AS BIGINT) AS id, CAST(customer_id AS BIGINT) AS customer_id, CASE WHEN status = 'SHIPPED' THEN 'DELIVERED' ELSE CAST(status AS STRING) END AS status,
   CAST(amount AS DECIMAL(12,2)) AS amount, CAST(payment_id AS STRING) AS payment_id,
   CAST(created_at AS TIMESTAMP) AS created_at, CAST(updated_at AS TIMESTAMP) AS updated_at
-FROM shop.public.orders;
+FROM shop.public.orders;  -- the shop now calls a shipped order DELIVERED
 
 CREATE OR REFRESH MATERIALIZED VIEW orders_daily_dlt
 COMMENT 'Assertix lab: one row per order day (same figures as orders_daily)'
