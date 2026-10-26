@@ -23,6 +23,7 @@ AS SELECT
   CAST(sum(amount) AS DECIMAL(22,2))                                  AS total_amount,
   CAST(coalesce(sum(CASE WHEN status IN ('PAID', 'SHIPPED') THEN amount END), 0) AS DECIMAL(22,2)) AS paid_amount,
   sum(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END)               AS cancelled_order_count,
-  CAST(coalesce(sum(CASE WHEN status = 'CANCELLED' THEN amount END), 0) AS DECIMAL(22,2)) AS cancelled_amount
+  CAST(coalesce(sum(CASE WHEN status = 'CANCELLED' THEN amount END), 0) AS DECIMAL(22,2)) AS cancelled_amount,
+  CAST(avg(amount) AS DECIMAL(22,2))                                  AS avg_order_amount
 FROM orders_clean
 GROUP BY to_date(created_at);
