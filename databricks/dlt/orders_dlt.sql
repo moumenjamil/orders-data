@@ -10,7 +10,7 @@ CREATE OR REFRESH MATERIALIZED VIEW orders_clean (
 COMMENT 'Assertix lab: the shop orders, with the team rules checked'
 AS SELECT
   CAST(id AS BIGINT) AS id, CAST(customer_id AS BIGINT) AS customer_id, CAST(status AS STRING) AS status,
-  CAST(amount AS DECIMAL(12,2)) AS amount, CAST(payment_id AS STRING) AS payment_id,
+  CAST(order_amount AS DECIMAL(12,2)) AS amount, CAST(payment_id AS STRING) AS payment_id,
   CAST(created_at AS TIMESTAMP) AS created_at, CAST(updated_at AS TIMESTAMP) AS updated_at
 FROM shop.public.orders;
 
