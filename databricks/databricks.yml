@@ -3,6 +3,8 @@
 #   extract_orders      today's snapshot of the shop's orders (read through the
 #                       Lakehouse Federation catalog "shop") -> orders_lab.raw_orders, one per day (dt)
 #   build_orders_daily  orders_lab.orders_daily from the latest snapshot
+#   build_customer_daily  (Python notebook, serverless) orders_lab.customer_daily: each
+#                       customer's orders and spend per day, from the latest snapshot
 # CI passes the warehouse and Assertix' service principal (repo variables).
 bundle:
   name: orders_daily_dbx
@@ -36,6 +38,12 @@ resources:
             warehouse_id: ${var.warehouse_id}
             file:
               path: ./sql/02_orders_daily.sql
+        # The loyalty team's step (Python): customer spend per day, from the same snapshot
+        - task_key: build_customer_daily
+          depends_on:
+            - task_key: extract_orders
+          notebook_task:
+            notebook_path: ./notebooks/customer_daily.ipynb
       permissions:
         - service_principal_name: ${var.assertix_principal}
           level: CAN_MANAGE_RUN
