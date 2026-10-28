@@ -25,6 +25,11 @@ resources:
       name: orders_daily_dbx
       description: "Shop orders -> raw snapshot per day -> daily report (orders_lab)"
       max_concurrent_runs: 1
+      # The team's nightly run: every day at 06:00 Berlin time, before the business day starts
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: Europe/Berlin
+        pause_status: UNPAUSED
       tasks:
         - task_key: extract_orders
           sql_task:
