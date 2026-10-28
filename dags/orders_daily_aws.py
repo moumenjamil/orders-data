@@ -27,7 +27,7 @@ import os
 import re
 import subprocess
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from airflow.providers.amazon.aws.hooks.base_aws import AwsBaseHook
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
@@ -69,7 +69,8 @@ def orders_daily_aws():
 
     @task
     def extract_orders_to_s3() -> str:
-        run_date = get_current_context()["dag_run"].run_after.strftime("%Y-%m-%d")
+        # the snapshot belongs to the business day that just ended (finance closes the day at midnight)
+        run_date = (get_current_context()["dag_run"].run_after - timedelta(days=1)).strftime("%Y-%m-%d")
         raw = Variable.get("orders_raw_bucket")
         rows = PostgresHook(postgres_conn_id="lab_source").get_records(
             f"SELECT {', '.join(COLUMNS)} FROM orders ORDER BY id")
