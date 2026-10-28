@@ -8,11 +8,12 @@ CREATE TABLE IF NOT EXISTS workspace.orders_lab.raw_orders (
 PARTITIONED BY (dt)
 COMMENT 'Assertix lab: one full snapshot of the shop orders per day (dt)';
 
-DELETE FROM workspace.orders_lab.raw_orders WHERE dt = current_date();
+-- the snapshot belongs to the business day that just ended (finance closes the day at midnight)
+DELETE FROM workspace.orders_lab.raw_orders WHERE dt = date_sub(current_date(), 1);
 
 INSERT INTO workspace.orders_lab.raw_orders
   (id, customer_id, status, amount, payment_id, created_at, updated_at, dt, loaded_at)
 SELECT CAST(id AS BIGINT), CAST(customer_id AS BIGINT), CAST(status AS STRING), CAST(amount AS DECIMAL(12,2)),
-       CAST(payment_id AS STRING), CAST(created_at AS TIMESTAMP), CAST(updated_at AS TIMESTAMP), current_date(),
+       CAST(payment_id AS STRING), CAST(created_at AS TIMESTAMP), CAST(updated_at AS TIMESTAMP), date_sub(current_date(), 1),
        current_timestamp()
 FROM shop.public.orders;
