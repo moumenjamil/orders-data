@@ -94,7 +94,7 @@ jobs:
         # the commit). Set the repo variable AIRFLOW_HOST back to empty
         # to deploy to Astronomer again.
         if: vars.AIRFLOW_HOST == 'local'
-        run: echo "commit $COMMIT is deployed by deploy-local.sh on the team's machine (after a PR is closed: check out main there)"
+        run: echo "commit $COMMIT is deployed by deploy-local.sh on the team's machine (after a PR is closed, check out main there)"
 
       - name: Deploy the Glue job's code to S3
         # D7-45: the AWS pipeline's transformation runs as the Glue job
