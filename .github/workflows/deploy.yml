@@ -6,14 +6,16 @@
 #
 # Lab setup: one Deployment, so a PR's commit replaces what runs there
 # until the next deploy. Teams with more budget use one preview
-# Deployment per PR.
+# Deployment per PR. A PR closed WITHOUT a merge puts main back (29 Oct:
+# a closed PR's code stayed deployed and the 06:00 run ran it); a merged
+# PR needs nothing here, its push to main deploys.
 name: Deploy to Astro
 
 on:
   push:
     branches: [main]
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, closed]
 
 permissions:
   contents: read
@@ -25,6 +27,8 @@ concurrency:
 
 jobs:
   deploy:
+    # a merged PR: main's own push deploys it
+    if: github.event.action != 'closed' || github.event.pull_request.merged == false
     runs-on: ubuntu-latest
     env:
       ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
@@ -32,7 +36,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.COMMIT }}
+          # a PR closed without a merge: main again
+          ref: ${{ github.event.action == 'closed' && github.event.repository.default_branch || env.COMMIT }}
+
+      - name: The commit this run deploys
+        run: echo "COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Record the deployed commit next to the DAGs
         run: echo "$COMMIT" > dags/.deployed_commit
@@ -86,7 +94,7 @@ jobs:
         # the commit). Set the repo variable AIRFLOW_HOST back to empty
         # to deploy to Astronomer again.
         if: vars.AIRFLOW_HOST == 'local'
-        run: echo "commit $COMMIT is deployed by deploy-local.sh on the team's machine"
+        run: echo "commit $COMMIT is deployed by deploy-local.sh on the team's machine (after a PR is closed, check out main there)"
 
       - name: Deploy the Glue job's code to S3
         # D7-45: the AWS pipeline's transformation runs as the Glue job
