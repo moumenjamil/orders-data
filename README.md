@@ -22,3 +22,4 @@ connections and secrets live in the Astro Deployment, never in this repo.
 
 Cancelled orders: see ORD-1.
 Daily report columns are described in schema.yml.
+
