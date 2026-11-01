@@ -23,7 +23,8 @@ SELECT
   dt,
   status,
   COUNT(*)    AS order_count,
-  SUM(amount) AS total_amount
+  SUM(amount) AS total_amount,
+  SUM(amount - refund_amount) AS net_amount
 FROM `{DATASET}.raw_orders`
 WHERE dt = (SELECT MAX(dt) FROM `{DATASET}.raw_orders`)
 GROUP BY dt, status
