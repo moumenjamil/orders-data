@@ -1,6 +1,7 @@
 # Targets mirror a team setup: dev (personal), ci (PR validation),
 # prod. Each builds into the warehouse schema of the same name.
 # snowflake: the same models in Snowflake ORDERS_DB.CI (D7-43).
+# bigquery: the same models in BigQuery dataset orders_lab (T2, D7-49).
 # Credentials come only from environment variables. DBT_WH_SSLMODE:
 # 'prefer' (local lab) unless set, 'require' for a cloud warehouse.
 argus_lab:
@@ -47,4 +48,16 @@ argus_lab:
       warehouse: ORDERS_WH
       database: ORDERS_DB
       schema: CI
+      threads: 2
+    # Same models on BigQuery (T2, D7-49): the pipeline's service account
+    # key, written by the DAG from the Airflow connection lab_gcp for the
+    # run (never in the repo); a cap on what one query may bill.
+    bigquery:
+      type: bigquery
+      method: service-account
+      keyfile: "{{ env_var('DBT_BQ_KEYFILE', '') }}"
+      project: "{{ env_var('DBT_BQ_PROJECT', '') }}"
+      dataset: orders_lab
+      location: europe-west3
+      maximum_bytes_billed: 1000000000
       threads: 2
