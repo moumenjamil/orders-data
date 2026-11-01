@@ -6,16 +6,23 @@ source Postgres (shop.orders)
      to s3://dbt-artifacts/orders_daily/<run id>/gx_results.json, and a
      broken rule stops the run before anything is loaded
   -> warehouse raw.orders (full snapshot, replaced each run): Postgres,
-     or Snowflake ORDERS_DB.RAW.ORDERS when dbt_target is "snowflake"
+     or Snowflake ORDERS_DB.RAW.ORDERS when dbt_target is "snowflake",
+     or BigQuery orders_lab.raw_orders when dbt_target is "bigquery" (T2,
+     D7-49): the file copied to gs://<raw bucket>/orders/dt=<run date>/,
+     then loaded as that day's slice (dt), replaced on a re-run, with
+     _loaded_at; dbt then reads only the run's day (var run_date)
   -> dbt build (models + tests) into the target schema (dev / ci / prod),
      and in the same task dbt's run_results.json (plus build.json with the
      deployed commit) to s3://dbt-artifacts/orders_daily/<run id>/ —
-     uploaded also when dbt fails, then the task fails as dbt did
+     uploaded also when dbt fails, then the task fails as dbt did;
+     for "bigquery" to gs://<artifacts bucket>/orders_daily/<run id>/
 
 Argus triggers this through the Airflow REST API and may pass
 {"dbt_target": "ci"} as run conf, the way a CI job validates a PR.
 Credentials come from Airflow Connections (lab_source,
-lab_warehouse_loader, lab_snowflake_loader, lab_s3), never from this file.
+lab_warehouse_loader, lab_snowflake_loader, lab_s3, lab_gcp), never from
+this file; the GCS bucket names from the Airflow Variables
+orders_gcs_raw_bucket and orders_gcs_artifacts_bucket.
 """
 from __future__ import annotations
 
@@ -29,7 +36,7 @@ from datetime import datetime
 
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.providers.postgres.hooks.postgres import PostgresHook
-from airflow.sdk import Param, dag, get_current_context, task
+from airflow.sdk import Param, Variable, dag, get_current_context, task
 
 BUCKET = "raw"
 ARTIFACTS_BUCKET = "dbt-artifacts"
@@ -47,6 +54,9 @@ GX_PYTHON = os.environ.get("ARGUS_LAB_GX_PYTHON", "/home/airflow/gx-venv/bin/pyt
 GX_DIR = os.environ.get("ARGUS_LAB_GX_DIR", "/opt/airflow/gx")
 COLUMNS = ["id", "customer_id", "status", "amount", "payment_id",
            "created_at", "updated_at"]
+# BigQuery (T2): the dataset dbt builds into and where its raw table lives
+BQ_DATASET = "orders_lab"
+BQ_LOCATION = "europe-west3"
 
 
 @dag(
@@ -54,7 +64,7 @@ COLUMNS = ["id", "customer_id", "status", "amount", "payment_id",
     schedule=None,
     start_date=datetime(2026, 1, 1),
     catchup=False,
-    params={"dbt_target": Param("dev", enum=["dev", "ci", "prod", "snowflake"])},
+    params={"dbt_target": Param("dev", enum=["dev", "ci", "prod", "snowflake", "bigquery"])},
     tags=["argus-data-lab"],
 )
 def orders_daily():
@@ -121,6 +131,8 @@ def orders_daily():
             key=key, bucket_name=BUCKET)
         if params["dbt_target"] == "snowflake":
             return _load_snowflake(data, key)
+        if params["dbt_target"] == "bigquery":
+            return _load_bigquery(data, key)
         wh = PostgresHook(postgres_conn_id="lab_warehouse_loader")
         conn = wh.get_conn()
         try:
@@ -153,30 +165,36 @@ def orders_daily():
         per-test detail matters); the task then fails as dbt did, so a
         failing dbt test still fails the run.
         """
-        run_id = get_current_context()["run_id"]
+        ctx = get_current_context()
+        run_id = ctx["run_id"]
+        run_date = ctx["dag_run"].run_after.strftime("%Y-%m-%d")
         target_path = f"/tmp/dbt-target/{re.sub(r'[^A-Za-z0-9_.-]', '_', run_id)}"
-        proc = subprocess.run(
-            [DBT_BIN, "build", "--project-dir", DBT_PROJECT_DIR, "--profiles-dir", DBT_PROJECT_DIR,
-             "--target", params["dbt_target"], "--target-path", target_path],
-            capture_output=True, text=True)
+        env, keyfile = dict(os.environ), None
+        if params["dbt_target"] == "bigquery":
+            env, keyfile = _bigquery_login(env, target_path)
+        try:
+            proc = subprocess.run(
+                [DBT_BIN, "build", "--project-dir", DBT_PROJECT_DIR, "--profiles-dir", DBT_PROJECT_DIR,
+                 "--target", params["dbt_target"], "--target-path", target_path,
+                 "--vars", json.dumps({"run_date": run_date})],
+                capture_output=True, text=True, env=env)
+        finally:
+            if keyfile and os.path.exists(keyfile):
+                os.remove(keyfile)
         print(proc.stdout[-20000:])
         if proc.stderr:
             print(proc.stderr[-5000:])
 
-        s3 = S3Hook(aws_conn_id="lab_s3")
-        if not s3.check_for_bucket(ARTIFACTS_BUCKET):
-            s3.create_bucket(bucket_name=ARTIFACTS_BUCKET)
+        put_file, put_string, where = _artifacts(params["dbt_target"])
         prefix = f"orders_daily/{run_id}"
         results = f"{target_path}/run_results.json"
         if os.path.exists(results):
-            s3.load_file(results, key=f"{prefix}/run_results.json", bucket_name=ARTIFACTS_BUCKET,
-                         replace=True)
-            print(f"Uploaded s3://{ARTIFACTS_BUCKET}/{prefix}/run_results.json")
+            put_file(results, f"{prefix}/run_results.json")
+            print(f"Uploaded {where}/{prefix}/run_results.json")
         else:
             print(f"dbt wrote no run_results.json ({results})")
-        s3.load_string(json.dumps({"git_sha": DEPLOYED_COMMIT or None, "dbt_target": params["dbt_target"],
-                                   "dbt_exit_code": proc.returncode}),
-                       key=f"{prefix}/build.json", bucket_name=ARTIFACTS_BUCKET, replace=True)
+        put_string(json.dumps({"git_sha": DEPLOYED_COMMIT or None, "dbt_target": params["dbt_target"],
+                               "dbt_exit_code": proc.returncode}), f"{prefix}/build.json")
 
         if proc.returncode != 0:
             raise RuntimeError(f"dbt build failed (exit code {proc.returncode})")
@@ -214,6 +232,96 @@ def _load_snowflake(data: str, key: str) -> int:
     finally:
         conn.close()
     print(f"Loaded {loaded} rows into Snowflake ORDERS_DB.RAW.ORDERS")
+    return loaded
+
+
+def _bigquery_login(env: dict, target_path: str):
+    """dbt's BigQuery login, from the Airflow connection lab_gcp like every
+    other credential: its key written to a private file for this one dbt
+    run (removed after), and the project."""
+    from airflow.providers.google.common.hooks.base_google import GoogleBaseHook
+
+    hook = GoogleBaseHook(gcp_conn_id="lab_gcp")
+    os.makedirs(target_path, exist_ok=True)
+    keyfile = f"{target_path}/.bq-key.json"
+    fd = os.open(keyfile, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        key = hook._get_field("keyfile_dict")
+        f.write(key if isinstance(key, str) else json.dumps(key))
+    return {**env, "DBT_BQ_KEYFILE": keyfile, "DBT_BQ_PROJECT": hook.project_id}, keyfile
+
+
+def _artifacts(target: str):
+    """Where dbt's results go: S3 (dbt-artifacts), or GCS for "bigquery"."""
+    if target == "bigquery":
+        from airflow.providers.google.cloud.hooks.gcs import GCSHook
+
+        gcs, bucket = GCSHook(gcp_conn_id="lab_gcp"), Variable.get("orders_gcs_artifacts_bucket")
+        return (lambda path, name: gcs.upload(bucket, name, filename=path, mime_type="application/json"),
+                lambda text, name: gcs.upload(bucket, name, data=text, mime_type="application/json"),
+                f"gs://{bucket}")
+    s3 = S3Hook(aws_conn_id="lab_s3")
+    if not s3.check_for_bucket(ARTIFACTS_BUCKET):
+        s3.create_bucket(bucket_name=ARTIFACTS_BUCKET)
+    return (lambda path, name: s3.load_file(path, key=name, bucket_name=ARTIFACTS_BUCKET, replace=True),
+            lambda text, name: s3.load_string(text, key=name, bucket_name=ARTIFACTS_BUCKET, replace=True),
+            f"s3://{ARTIFACTS_BUCKET}")
+
+
+def _load_bigquery(data: str, key: str) -> int:
+    """The run's day into BigQuery orders_lab.raw_orders (T2, D7-49).
+
+    The file goes to the GCS raw bucket under orders/dt=<run date>/, is
+    loaded into a scratch table, and replaces that day's slice (dt) in one
+    transaction, stamped with _loaded_at. Earlier days stay. Imported here
+    so an Airflow without the Google provider still loads the DAG.
+    """
+    from google.cloud import bigquery
+    from airflow.providers.google.cloud.hooks.bigquery import BigQueryHook
+    from airflow.providers.google.cloud.hooks.gcs import GCSHook
+
+    ctx = get_current_context()
+    run_date = ctx["dag_run"].run_after.strftime("%Y-%m-%d")
+    safe_run_id = re.sub(r"[^A-Za-z0-9_]", "_", ctx["run_id"])
+    bucket = Variable.get("orders_gcs_raw_bucket")
+    name = f"orders/dt={run_date}/{key.rsplit('/', 1)[-1]}"
+    GCSHook(gcp_conn_id="lab_gcp").upload(bucket, name, data=data, mime_type="text/csv")
+    uri = f"gs://{bucket}/{name}"
+    print(f"Copied the file to {uri}")
+
+    hook = BigQueryHook(gcp_conn_id="lab_gcp", location=BQ_LOCATION, use_legacy_sql=False)
+    client = hook.get_client(project_id=hook.project_id, location=BQ_LOCATION)
+    ds = f"{hook.project_id}.{BQ_DATASET}"
+    fields = [bigquery.SchemaField("id", "INT64"), bigquery.SchemaField("customer_id", "INT64"),
+              bigquery.SchemaField("status", "STRING"), bigquery.SchemaField("amount", "NUMERIC"),
+              bigquery.SchemaField("payment_id", "STRING"), bigquery.SchemaField("created_at", "TIMESTAMP"),
+              bigquery.SchemaField("updated_at", "TIMESTAMP")]
+    table = bigquery.Table(f"{ds}.raw_orders", schema=fields + [
+        bigquery.SchemaField("_source_key", "STRING"), bigquery.SchemaField("_loaded_at", "TIMESTAMP"),
+        bigquery.SchemaField("dt", "DATE")])
+    table.time_partitioning = bigquery.TimePartitioning(field="dt")
+    client.create_table(table, exists_ok=True)
+
+    scratch = f"{ds}._load_raw_orders_{safe_run_id}"
+    client.load_table_from_uri(uri, scratch, job_config=bigquery.LoadJobConfig(
+        schema=fields, source_format=bigquery.SourceFormat.CSV, skip_leading_rows=1,
+        write_disposition="WRITE_TRUNCATE")).result()
+    cols = ", ".join(COLUMNS)
+    try:
+        client.query(f"""
+            BEGIN TRANSACTION;
+            DELETE FROM `{ds}.raw_orders` WHERE dt = @day;
+            INSERT INTO `{ds}.raw_orders` ({cols}, _source_key, _loaded_at, dt)
+            SELECT {cols}, @uri, CURRENT_TIMESTAMP(), @day FROM `{scratch}`;
+            COMMIT TRANSACTION;""", job_config=bigquery.QueryJobConfig(query_parameters=[
+                bigquery.ScalarQueryParameter("day", "DATE", run_date),
+                bigquery.ScalarQueryParameter("uri", "STRING", uri)])).result()
+    finally:
+        client.delete_table(scratch, not_found_ok=True)
+    loaded = list(client.query(f"SELECT count(*) FROM `{ds}.raw_orders` WHERE dt = @day",
+                               job_config=bigquery.QueryJobConfig(query_parameters=[
+                                   bigquery.ScalarQueryParameter("day", "DATE", run_date)])).result())[0][0]
+    print(f"Loaded {loaded} rows into BigQuery {BQ_DATASET}.raw_orders (dt = {run_date})")
     return loaded
 
 

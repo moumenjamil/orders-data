@@ -1,8 +1,11 @@
 version: 2
 
+# raw.orders on Postgres and Snowflake (a full snapshot each run); on
+# BigQuery (T2) orders_lab.raw_orders, one slice per day (dt).
 sources:
   - name: raw
-    schema: raw
+    schema: "{{ 'orders_lab' if target.type == 'bigquery' else 'raw' }}"
     tables:
       - name: orders
+        identifier: "{{ 'raw_orders' if target.type == 'bigquery' else 'orders' }}"
         loaded_at_field: _loaded_at
