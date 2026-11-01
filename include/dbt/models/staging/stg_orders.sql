@@ -8,7 +8,8 @@ select
     payment_id,
     created_at,
     updated_at,
-    cast(created_at as date) as order_date
+    cast(created_at as date) as order_date,
+    updated_at::date as last_change_date
 from {{ source('raw', 'orders') }}
 {% if target.type == 'bigquery' %}
 where dt = '{{ var("run_date") }}'
