@@ -10,6 +10,8 @@ select
     updated_at,
     cast(created_at as date) as order_date
 from {{ source('raw', 'orders') }}
+-- cancelled orders are not revenue: leave them out of staging
+where status != 'CANCELLED'
 {% if target.type == 'bigquery' %}
-where dt = '{{ var("run_date") }}'
+  and dt = '{{ var("run_date") }}'
 {% endif %}
