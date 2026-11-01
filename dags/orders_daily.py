@@ -3,7 +3,8 @@
 source Postgres (shop.orders)
   -> CSV in S3-compatible storage  s3://raw/orders/dt=<run date>/<run id>.csv
   -> the team's Great Expectations rules on that file (D7-44); their result
-     to s3://dbt-artifacts/orders_daily/<run id>/gx_results.json, and a
+     to s3://dbt-artifacts/orders_daily/<run id>/gx_results.json (GCS for
+     "bigquery"), and a
      broken rule stops the run before anything is loaded
   -> warehouse raw.orders (full snapshot, replaced each run): Postgres,
      or Snowflake ORDERS_DB.RAW.ORDERS when dbt_target is "snowflake",
@@ -94,12 +95,12 @@ def orders_daily():
         return key
 
     @task
-    def check_raw_with_gx(key: str) -> str:
+    def check_raw_with_gx(key: str, params=None) -> str:
         """The team's GX rules on the raw file, before it is loaded.
 
-        The result goes to the artifacts bucket next to dbt's, also when a
-        rule broke (that is when it matters); the task then fails, so the
-        load never runs on bad data.
+        The result goes to the artifacts bucket next to dbt's (GCS for
+        "bigquery"), also when a rule broke (that is when it matters); the
+        task then fails, so the load never runs on bad data.
         """
         run_id = get_current_context()["run_id"]
         s3 = S3Hook(aws_conn_id="lab_s3")
@@ -115,10 +116,9 @@ def orders_daily():
             print(proc.stderr[-5000:])
         out = f"orders_daily/{run_id}/gx_results.json"
         if os.path.exists(f"{work}/gx_results.json"):
-            if not s3.check_for_bucket(ARTIFACTS_BUCKET):
-                s3.create_bucket(bucket_name=ARTIFACTS_BUCKET)
-            s3.load_file(f"{work}/gx_results.json", key=out, bucket_name=ARTIFACTS_BUCKET, replace=True)
-            print(f"Uploaded s3://{ARTIFACTS_BUCKET}/{out}")
+            put_file, _, where = _artifacts(params["dbt_target"])
+            put_file(f"{work}/gx_results.json", out)
+            print(f"Uploaded {where}/{out}")
         if proc.returncode == 1:
             raise RuntimeError("the raw orders broke the team's GX rules: not loaded")
         if proc.returncode != 0:
