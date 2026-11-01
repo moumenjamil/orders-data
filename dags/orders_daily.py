@@ -33,7 +33,7 @@ import json
 import os
 import re
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.providers.postgres.hooks.postgres import PostgresHook
@@ -281,7 +281,8 @@ def _load_bigquery(data: str, key: str) -> int:
     from airflow.providers.google.cloud.hooks.gcs import GCSHook
 
     ctx = get_current_context()
-    run_date = ctx["dag_run"].run_after.strftime("%Y-%m-%d")
+    # the business day: the nightly run loads yesterday's orders, so they land in yesterday's slice
+    run_date = (ctx["dag_run"].run_after - timedelta(days=1)).strftime("%Y-%m-%d")
     safe_run_id = re.sub(r"[^A-Za-z0-9_]", "_", ctx["run_id"])
     bucket = Variable.get("orders_gcs_raw_bucket")
     name = f"orders/dt={run_date}/{key.rsplit('/', 1)[-1]}"
