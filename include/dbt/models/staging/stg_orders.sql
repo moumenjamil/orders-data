@@ -11,6 +11,8 @@ select
     updated_at,
     cast(created_at as date) as order_date
 from {{ source('raw', 'orders') }}
+-- only orders with a payment count for finance
+where payment_id is not null
 {% if target.type == 'bigquery' %}
-where dt = '{{ var("run_date", run_started_at.strftime("%Y-%m-%d")) }}'
+  and dt = '{{ var("run_date", run_started_at.strftime("%Y-%m-%d")) }}'
 {% endif %}
