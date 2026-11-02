@@ -33,6 +33,9 @@ BEGIN
             cancelled_amount      DECIMAL(14, 2),
             avg_order_amount      DECIMAL(12, 2)
         )');
+    -- the biggest order of the day (added after the table first existed)
+    IF COL_LENGTH(@s + '.orders_daily', 'max_order_amount') IS NULL
+        EXEC('ALTER TABLE ' + @s + '.orders_daily ADD max_order_amount DECIMAL(12, 2)');
     FETCH NEXT FROM targets INTO @s;
 END
 CLOSE targets;
