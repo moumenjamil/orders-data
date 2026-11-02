@@ -1,0 +1,5 @@
+{
+  "type": "AzureSqlTable",
+  "linkedServiceName": {"referenceName": "orders_sql", "type": "LinkedServiceReference"},
+  "typeProperties": {"schema": "raw", "table": "orders"}
+}

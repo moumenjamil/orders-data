@@ -1,0 +1,17 @@
+{
+  "type": "DelimitedText",
+  "linkedServiceName": {"referenceName": "lake", "type": "LinkedServiceReference"},
+  "parameters": {"folder": {"type": "String"}, "file": {"type": "String"}},
+  "typeProperties": {
+    "location": {
+      "type": "AzureBlobFSLocation",
+      "fileSystem": "raw",
+      "folderPath": {"value": "@dataset().folder", "type": "Expression"},
+      "fileName": {"value": "@dataset().file", "type": "Expression"}
+    },
+    "columnDelimiter": ",",
+    "quoteChar": "\"",
+    "escapeChar": "\\",
+    "firstRowAsHeader": true
+  }
+}

@@ -91,7 +91,7 @@ ART_ID="$(az storage account show -n $ST -g $RG --query id -o tsv)/blobServices/
 az role assignment create --assignee "$PIPE_ID" --role "Data Factory Contributor" --scope "$FACTORY_ID" -o none 2>/dev/null
 ok "orders-pipeline: Data Factory Contributor on the factory"
 # Assertix: start, cancel and read runs of this one factory; read the results container
-az role definition show --name "Assertix pipeline runner" -o none 2>/dev/null || az role definition create -o none --role-definition "{
+[ -n "$(az role definition list --custom-role-only true --name "Assertix pipeline runner" --query "[0].name" -o tsv)" ] || az role definition create -o none --role-definition "{
   \"Name\": \"Assertix pipeline runner\", \"Description\": \"Start, cancel and read Data Factory runs; read factories\",
   \"Actions\": [\"Microsoft.DataFactory/factories/read\", \"Microsoft.DataFactory/factories/pipelines/read\",
     \"Microsoft.DataFactory/factories/pipelines/createrun/action\", \"Microsoft.DataFactory/factories/pipelineruns/read\",

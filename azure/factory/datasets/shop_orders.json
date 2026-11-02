@@ -1,0 +1,5 @@
+{
+  "type": "PostgreSqlV2Table",
+  "linkedServiceName": {"referenceName": "shop", "type": "LinkedServiceReference"},
+  "typeProperties": {"schema": "public", "table": "orders"}
+}

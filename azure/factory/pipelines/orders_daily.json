@@ -1,0 +1,89 @@
+{
+  "description": "orders_daily on Azure: shop orders -> raw/orders/dt=<day>/<run id>.csv (ADLS) -> raw.orders slice dt=<day> (Azure SQL) -> <target>.orders_daily",
+  "parameters": {
+    "run_date": {"type": "String", "defaultValue": ""},
+    "target": {"type": "String", "defaultValue": "dev"}
+  },
+  "variables": {"day": {"type": "String"}},
+  "activities": [
+    {
+      "name": "pick_day",
+      "type": "SetVariable",
+      "typeProperties": {
+        "variableName": "day",
+        "value": {"value": "@if(empty(pipeline().parameters.run_date), formatDateTime(utcnow(), 'yyyy-MM-dd'), pipeline().parameters.run_date)", "type": "Expression"}
+      }
+    },
+    {
+      "name": "ensure_tables",
+      "type": "Script",
+      "dependsOn": [{"activity": "pick_day", "dependencyConditions": ["Succeeded"]}],
+      "policy": {"retry": 3, "retryIntervalInSeconds": 60, "timeout": "0.00:10:00"},
+      "linkedServiceName": {"referenceName": "orders_sql", "type": "LinkedServiceReference"},
+      "typeProperties": {"scripts": [{"type": "NonQuery", "text": "@sql:ensure_tables.sql"}]}
+    },
+    {
+      "name": "extract_orders",
+      "type": "Copy",
+      "dependsOn": [{"activity": "ensure_tables", "dependencyConditions": ["Succeeded"]}],
+      "policy": {"timeout": "0.00:15:00"},
+      "inputs": [{"referenceName": "shop_orders", "type": "DatasetReference"}],
+      "outputs": [{
+        "referenceName": "raw_orders_file", "type": "DatasetReference",
+        "parameters": {
+          "folder": {"value": "@concat('orders/dt=', variables('day'))", "type": "Expression"},
+          "file": {"value": "@concat(pipeline().RunId, '.csv')", "type": "Expression"}
+        }
+      }],
+      "typeProperties": {
+        "source": {
+          "type": "PostgreSqlV2Source",
+          "query": "SELECT id, customer_id, status, amount, payment_id, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') AS created_at, to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') AS updated_at FROM orders ORDER BY id"
+        },
+        "sink": {
+          "type": "DelimitedTextSink",
+          "storeSettings": {"type": "AzureBlobFSWriteSettings"},
+          "formatSettings": {"type": "DelimitedTextWriteSettings", "fileExtension": ".csv"}
+        }
+      }
+    },
+    {
+      "name": "load_raw_orders",
+      "type": "Copy",
+      "dependsOn": [{"activity": "extract_orders", "dependencyConditions": ["Succeeded"]}],
+      "policy": {"timeout": "0.00:15:00"},
+      "inputs": [{
+        "referenceName": "raw_orders_file", "type": "DatasetReference",
+        "parameters": {
+          "folder": {"value": "@concat('orders/dt=', variables('day'))", "type": "Expression"},
+          "file": {"value": "@concat(pipeline().RunId, '.csv')", "type": "Expression"}
+        }
+      }],
+      "outputs": [{"referenceName": "raw_orders_table", "type": "DatasetReference"}],
+      "typeProperties": {
+        "source": {
+          "type": "DelimitedTextSource",
+          "storeSettings": {"type": "AzureBlobFSReadSettings"},
+          "formatSettings": {"type": "DelimitedTextReadSettings"},
+          "additionalColumns": [
+            {"name": "dt", "value": {"value": "@variables('day')", "type": "Expression"}},
+            {"name": "_loaded_at", "value": {"value": "@formatDateTime(utcnow(), 'yyyy-MM-dd HH:mm:ss.fffffff')", "type": "Expression"}}
+          ]
+        },
+        "sink": {
+          "type": "AzureSqlSink",
+          "writeBehavior": "insert",
+          "preCopyScript": {"value": "@concat('DELETE FROM raw.orders WHERE dt = ''', variables('day'), '''')", "type": "Expression"}
+        }
+      }
+    },
+    {
+      "name": "build_orders_daily",
+      "type": "Script",
+      "dependsOn": [{"activity": "load_raw_orders", "dependencyConditions": ["Succeeded"]}],
+      "policy": {"timeout": "0.00:10:00"},
+      "linkedServiceName": {"referenceName": "orders_sql", "type": "LinkedServiceReference"},
+      "typeProperties": {"scripts": [{"type": "NonQuery", "text": "@sql:build_orders_daily.sql"}]}
+    }
+  ]
+}
