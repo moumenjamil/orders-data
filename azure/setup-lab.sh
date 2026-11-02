@@ -96,7 +96,7 @@ ok "orders-pipeline: Data Factory Contributor on the factory"
   \"Actions\": [\"Microsoft.DataFactory/factories/read\", \"Microsoft.DataFactory/factories/pipelines/read\",
     \"Microsoft.DataFactory/factories/pipelines/createrun/action\", \"Microsoft.DataFactory/factories/pipelineruns/read\",
     \"Microsoft.DataFactory/factories/pipelineruns/cancel/action\", \"Microsoft.DataFactory/factories/pipelineruns/queryactivityruns/action\",
-    \"Microsoft.DataFactory/factories/querypipelineruns/action\"],
+    \"Microsoft.DataFactory/factories/querypipelineruns/read\"],
   \"AssignableScopes\": [\"/subscriptions/$SUB/resourceGroups/$RG\"]}"
 sleep 10
 az role assignment create --assignee "$READ_ID" --role "Assertix pipeline runner" --scope "$FACTORY_ID" -o none 2>/dev/null
