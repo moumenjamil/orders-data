@@ -7,7 +7,8 @@ IF '{target}' NOT IN ('dev', 'ci', 'prod') THROW 50001, 'unknown target {target}
 BEGIN TRANSACTION;
 DELETE FROM {target}.orders_daily;
 INSERT INTO {target}.orders_daily (order_date, order_count, paid_order_count, total_amount,
-                                   paid_amount, cancelled_order_count, cancelled_amount, avg_order_amount)
+                                   paid_amount, cancelled_order_count, cancelled_amount, avg_order_amount,
+                                   max_order_amount)
 SELECT
     CAST(created_at AS DATE)                                       AS order_date,
     COUNT(*)                                                       AS order_count,
@@ -16,7 +17,8 @@ SELECT
     COALESCE(SUM(CASE WHEN status IN ('PAID', 'SHIPPED') THEN amount END), 0) AS paid_amount,
     SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END)          AS cancelled_order_count,
     COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN amount END), 0) AS cancelled_amount,
-    ROUND(AVG(amount), 2)                                          AS avg_order_amount
+    ROUND(AVG(amount), 2)                                          AS avg_order_amount,
+    MAX(amount)                                                    AS max_order_amount
 FROM raw.orders
 WHERE dt = '{day}'
 GROUP BY CAST(created_at AS DATE);
