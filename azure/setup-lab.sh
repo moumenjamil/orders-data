@@ -95,7 +95,7 @@ ok "orders-pipeline: Data Factory Contributor on the factory"
   \"Name\": \"Assertix pipeline runner\", \"Description\": \"Start, cancel and read Data Factory runs; read factories\",
   \"Actions\": [\"Microsoft.DataFactory/factories/read\", \"Microsoft.DataFactory/factories/pipelines/read\",
     \"Microsoft.DataFactory/factories/pipelines/createrun/action\", \"Microsoft.DataFactory/factories/pipelineruns/read\",
-    \"Microsoft.DataFactory/factories/pipelineruns/cancel/action\", \"Microsoft.DataFactory/factories/pipelineruns/queryactivityruns/action\",
+    \"Microsoft.DataFactory/factories/pipelineruns/cancel/action\", \"Microsoft.DataFactory/factories/pipelineruns/queryactivityruns/read\",
     \"Microsoft.DataFactory/factories/querypipelineruns/read\"],
   \"AssignableScopes\": [\"/subscriptions/$SUB/resourceGroups/$RG\"]}"
 sleep 10
