@@ -21,5 +21,6 @@ SELECT
     MAX(amount)                                                    AS max_order_amount
 FROM raw.orders
 WHERE dt = '{day}'
+  AND status <> 'CANCELLED'   -- cancelled orders are not revenue
 GROUP BY CAST(created_at AS DATE);
 COMMIT;
