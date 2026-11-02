@@ -53,11 +53,11 @@ def token(e):
 
 def linked_services(e):
     return {
-        # the shop's database, read-only login (Neon PostgreSQL, TLS required)
+        # the shop's database, read-only login (Neon PostgreSQL, TLS with the server certificate checked)
         "shop": {"type": "PostgreSqlV2", "typeProperties": {
             "server": e["SHOP_PG_HOST"], "port": 5432, "database": "shop",
             "username": e["SHOP_PG_USER"], "password": {"type": "SecureString", "value": e["SHOP_PG_PASSWORD"]},
-            "sslMode": 3, "authenticationType": "Basic"}},
+            "sslMode": 5, "authenticationType": "Basic"}},
         # the lake (ADLS Gen2) and the database, both as the factory's own managed identity
         "lake": {"type": "AzureBlobFS", "typeProperties": {
             "url": f"https://{e['AZ_STORAGE']}.dfs.core.windows.net"}},
