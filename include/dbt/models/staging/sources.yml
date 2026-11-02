@@ -8,4 +8,5 @@ sources:
     tables:
       - name: orders
         identifier: "{{ 'raw_orders' if target.type == 'bigquery' else 'orders' }}"
-        loaded_at_field: _loaded_at
+        config:
+          loaded_at_field: _loaded_at

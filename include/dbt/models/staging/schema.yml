@@ -12,4 +12,5 @@ models:
       - name: status
         data_tests:
           - accepted_values:
-              values: ['CREATED', 'PAID', 'SHIPPED', 'CANCELLED']
+              arguments:
+                values: ['CREATED', 'PAID', 'SHIPPED', 'CANCELLED']
