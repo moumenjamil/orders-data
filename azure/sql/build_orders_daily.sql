@@ -13,7 +13,7 @@ SELECT
     CAST(created_at AS DATE)                                       AS order_date,
     COUNT(*)                                                       AS order_count,
     SUM(CASE WHEN status IN ('PAID', 'SHIPPED') THEN 1 ELSE 0 END) AS paid_order_count,
-    SUM(amount)                                                    AS total_amount,
+    SUM(amount - refund_amount)                                    AS total_amount,
     COALESCE(SUM(CASE WHEN status IN ('PAID', 'SHIPPED') THEN amount END), 0) AS paid_amount,
     SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END)          AS cancelled_order_count,
     COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN amount END), 0) AS cancelled_amount,
