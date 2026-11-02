@@ -8,6 +8,7 @@ select
                                                           as paid_amount,
     sum(case when status = 'CANCELLED' then 1 else 0 end) as cancelled_order_count,
     coalesce(sum(case when status = 'CANCELLED' then amount end), 0)
-                                                          as cancelled_amount
+                                                          as cancelled_amount,
+    round(avg(amount), 2)                                 as avg_order_amount
 from {{ ref('stg_orders') }}
 group by order_date
