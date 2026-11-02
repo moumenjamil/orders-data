@@ -1,6 +1,7 @@
 #!/bin/bash
 # T4 (D7-51, Azure): the cloud lab's Azure side, run once in Azure Cloud Shell (Bash),
-# signed in as the subscription's owner. Region westeurope for everything.
+# signed in as the subscription's owner. Region: germanywestcentral (westeurope refuses new
+# customers, 2 Nov 2026); another with  R=swedencentral bash setup-lab.sh
 #   resource group  assertix-lab
 #   storage         assertixlab<suffix> (ADLS Gen2): containers raw (the daily orders files)
 #                   and artifacts (the runs' results and build info)
@@ -15,7 +16,7 @@
 # set-azure-keys.sh (Assertix repo, data-lab/cloud/azure) on the Mac. Safe to run again (keeps what exists;
 # a run again makes NEW secrets only when the secrets file is missing).
 set -uo pipefail
-R=westeurope
+R=${R:-germanywestcentral}
 RG=assertix-lab
 SUB=$(az account show --query id -o tsv)
 TENANT=$(az account show --query tenantId -o tsv)
@@ -27,6 +28,7 @@ SQL=assertix-lab-$SUFFIX
 ADF=assertix-lab-adf-$SUFFIX
 SECRETS=$HOME/assertix-azure-secrets.env
 ok() { echo "  $*"; }
+fail() { echo "  FAILED: $*"; exit 1; }
 
 echo "== providers"
 for p in Microsoft.Storage Microsoft.Sql Microsoft.DataFactory; do
@@ -34,11 +36,12 @@ for p in Microsoft.Storage Microsoft.Sql Microsoft.DataFactory; do
 az extension add -n datafactory --only-show-errors >/dev/null 2>&1
 
 echo "== resource group $RG"
-az group create -n $RG -l $R -o none && ok created
+az group show -n $RG -o none 2>/dev/null && ok "exists" || { az group create -n $RG -l $R -o none && ok created; }
 
 echo "== storage $ST (ADLS Gen2)"
 az storage account show -n $ST -g $RG -o none 2>/dev/null || az storage account create -n $ST -g $RG -l $R \
-  --sku Standard_LRS --kind StorageV2 --hns true --min-tls-version TLS1_2 --allow-blob-public-access false -o none
+  --sku Standard_LRS --kind StorageV2 --hns true --min-tls-version TLS1_2 --allow-blob-public-access false -o none \
+  || fail "storage account $ST in $R (try another region: R=swedencentral bash setup-lab.sh)"
 ok ready
 az role assignment create --assignee "$ME" --role "Storage Blob Data Contributor" \
   --scope "$(az storage account show -n $ST -g $RG --query id -o tsv)" -o none 2>/dev/null
@@ -51,11 +54,11 @@ done
 echo "== Azure SQL $SQL / orders (free offer)"
 az sql server show -n $SQL -g $RG -o none 2>/dev/null || az sql server create -n $SQL -g $RG -l $R \
   --enable-ad-only-auth --external-admin-principal-type User --external-admin-name "$MYNAME" \
-  --external-admin-sid "$ME" -o none
+  --external-admin-sid "$ME" -o none || fail "SQL server $SQL in $R"
 ok "server ready (Entra logins only)"
 az sql db show -n orders -s $SQL -g $RG -o none 2>/dev/null || az sql db create -n orders -s $SQL -g $RG \
   --edition GeneralPurpose --compute-model Serverless --family Gen5 --capacity 2 \
-  --use-free-limit --free-limit-exhaustion-behavior AutoPause -o none
+  --use-free-limit --free-limit-exhaustion-behavior AutoPause -o none || fail "database orders (free offer)"
 ok "database orders ready (free offer, auto-pause)"
 # Azure services (Data Factory) and Assertix on a laptop (changing addresses): the lab opens the
 # firewall; only Entra logins exist, no passwords. A team would allow its own addresses.
@@ -66,7 +69,8 @@ az sql server firewall-rule create -s $SQL -g $RG -n lab-anywhere --start-ip-add
 ok "firewall: Azure services and the lab"
 
 echo "== Data Factory $ADF"
-az datafactory show -n $ADF -g $RG -o none 2>/dev/null || az datafactory create -n $ADF -g $RG -l $R -o none
+az datafactory show -n $ADF -g $RG -o none 2>/dev/null || az datafactory create -n $ADF -g $RG -l $R -o none \
+  || fail "Data Factory $ADF in $R"
 ADF_MI=$(az datafactory show -n $ADF -g $RG --query identity.principalId -o tsv)
 az role assignment create --assignee-object-id "$ADF_MI" --assignee-principal-type ServicePrincipal \
   --role "Storage Blob Data Contributor" --scope "$(az storage account show -n $ST -g $RG --query id -o tsv)" -o none 2>/dev/null
