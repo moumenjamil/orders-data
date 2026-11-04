@@ -20,4 +20,5 @@ SELECT
     MAX(amount)                                                    AS max_order_amount
 FROM landing.orders
 WHERE dt = '{day}'
+  AND status <> 'CANCELLED'   -- cancelled orders are not revenue
 GROUP BY CAST(created_at AS DATE);
