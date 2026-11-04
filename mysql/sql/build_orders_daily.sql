@@ -1,7 +1,7 @@
 -- orders_daily on MySQL (T6): one row per order day, from the run's slice of landing.orders.
 -- The target database (dev, ci or prod) and the run's day are filled in by the job.
 CREATE TABLE IF NOT EXISTS {target}.orders_daily (
-    order_date DATE, order_count INT, paid_order_count INT, total_amount DECIMAL(14, 2),
+    order_date DATE PRIMARY KEY, order_count INT, paid_order_count INT, total_amount DECIMAL(14, 2),
     paid_amount DECIMAL(14, 2), cancelled_order_count INT, cancelled_amount DECIMAL(14, 2),
     avg_order_amount DECIMAL(12, 2)
 );

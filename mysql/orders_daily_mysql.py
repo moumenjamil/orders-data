@@ -23,7 +23,7 @@ EXTRACT = ("SELECT id, customer_id, status, amount, payment_id, "
            "to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') FROM orders ORDER BY id")
 LANDING = """CREATE TABLE IF NOT EXISTS landing.orders (
     id BIGINT, customer_id BIGINT, status VARCHAR(20), amount DECIMAL(12, 2), payment_id VARCHAR(64),
-    created_at DATETIME(6), updated_at DATETIME(6), _loaded_at DATETIME(6), dt DATE, KEY (dt))"""
+    created_at DATETIME(6), updated_at DATETIME(6), _loaded_at DATETIME(6), dt DATE, PRIMARY KEY (dt, id))"""
 
 
 def statements(name, **values):
