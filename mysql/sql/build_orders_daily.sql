@@ -1,3 +1,4 @@
+-- One row per order day; rebuilt in full on each run.
 -- orders_daily on MySQL (T6): one row per order day, from the run's slice of landing.orders.
 -- The target database (dev, ci or prod) and the run's day are filled in by the job.
 -- Rebuilt from scratch each run, so a new figure needs no ALTER TABLE.
