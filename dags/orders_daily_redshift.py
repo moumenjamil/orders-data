@@ -34,7 +34,7 @@ COLUMNS = ["id", "customer_id", "status", "amount", "payment_id", "created_at", 
 # timestamps as UTC text, the way the load casts them back
 EXTRACT = ("SELECT id, customer_id, status, amount, payment_id, "
            "to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US'), "
-           "to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') FROM orders ORDER BY id")
+           "to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') FROM orders WHERE updated_at >= current_date ORDER BY id")
 WAIT_SECONDS = 900
 
 
