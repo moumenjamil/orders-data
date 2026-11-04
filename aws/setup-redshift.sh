@@ -6,7 +6,7 @@
 #              the copy role as its default role
 #   workgroup  assertix-lab: the smallest size (4 compute units, else 8), not public, and a daily
 #              usage limit (8 RPU-hours, then Redshift stops queries until the next day)
-#   logins     assertix-lab-pipeline: runs SQL through the Data API, owns the schemas raw, ci, dev
+#   logins     assertix-lab-pipeline: runs SQL through the Data API, owns the schemas landing (the raw copies; "raw" is reserved in Redshift), ci, dev
 #              assertix-lab-reader (Assertix): runs SQL through the Data API, SELECT only
 # Prints no secret. Safe to run again: what exists is kept, the logins' Redshift policies updated.
 set -uo pipefail
@@ -86,7 +86,7 @@ sql() {   # one statement; an "already exists" is fine
 P='"IAM:assertix-lab-pipeline"'; A='"IAM:assertix-lab-reader"'
 sql "CREATE USER $P PASSWORD DISABLE" || exit 1
 sql "CREATE USER $A PASSWORD DISABLE" || exit 1
-for s in raw ci dev; do
+for s in landing ci dev; do
   sql "CREATE SCHEMA IF NOT EXISTS $s" || exit 1
   sql "ALTER SCHEMA $s OWNER TO $P" || exit 1
   sql "GRANT USAGE ON SCHEMA $s TO $A" || exit 1
