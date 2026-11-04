@@ -1,0 +1,22 @@
+-- orders_daily on Redshift (T5): one row per order day, from the run's slice of landing.orders.
+-- The target schema (dev, ci or prod) and the run's day are filled in by the DAG.
+-- Rebuilt whole in one transaction, so a failed run leaves the old table.
+CREATE TABLE IF NOT EXISTS {target}.orders_daily (
+    order_date DATE, order_count INT, paid_order_count INT, total_amount DECIMAL(14, 2),
+    paid_amount DECIMAL(14, 2), cancelled_order_count INT, cancelled_amount DECIMAL(14, 2),
+    avg_order_amount DECIMAL(12, 2)
+);
+DELETE FROM {target}.orders_daily;
+INSERT INTO {target}.orders_daily
+SELECT
+    CAST(created_at AS DATE)                                       AS order_date,
+    COUNT(*)                                                       AS order_count,
+    SUM(CASE WHEN status IN ('PAID', 'SHIPPED') THEN 1 ELSE 0 END) AS paid_order_count,
+    SUM(amount)                                                    AS total_amount,
+    COALESCE(SUM(CASE WHEN status IN ('PAID', 'SHIPPED') THEN amount END), 0) AS paid_amount,
+    SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END)          AS cancelled_order_count,
+    COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN amount END), 0) AS cancelled_amount,
+    ROUND(AVG(amount), 2)                                          AS avg_order_amount
+FROM landing.orders
+WHERE dt = '{day}'
+GROUP BY CAST(created_at AS DATE);
