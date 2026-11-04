@@ -1,0 +1,47 @@
+# orders_daily on MySQL (T6, D7-53): the team's job runs here, in GitHub Actions, on every PR
+# (target ci: the PR's own code and data) and on main (target dev). Assertix cannot start it, so
+# the job reports each run to Assertix (mysql/report_run.py), which then checks the data.
+name: orders-daily-mysql
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: orders-daily-mysql   # one run at a time: every run writes the same tables
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      REPO: ${{ github.repository }}
+      PIPELINE_ID: orders-daily-mysql
+      RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      ASSERTIX_URL: ${{ vars.ASSERTIX_URL }}
+      ASSERTIX_WEBHOOK_SECRET: ${{ secrets.ASSERTIX_WEBHOOK_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: start
+        run: |
+          echo "STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          pip install --quiet psycopg2-binary==2.9.10 PyMySQL==1.1.1
+      - name: report running
+        run: STARTED_AT=$STARTED_AT python mysql/report_run.py running
+      - name: orders_daily
+        id: job
+        env:
+          SHOP_PG_URL: ${{ secrets.SHOP_PG_URL }}
+          MYSQL_HOST: ${{ vars.MYSQL_HOST }}
+          MYSQL_PORT: ${{ vars.MYSQL_PORT }}
+          MYSQL_USER: orders_pipeline
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PIPELINE_PASSWORD }}
+          TARGET: ${{ github.event_name == 'pull_request' && 'ci' || 'dev' }}
+        run: python mysql/orders_daily_mysql.py
+      - name: report the result
+        if: always()
+        run: python mysql/report_run.py ${{ steps.job.outcome == 'success' && 'success' || (steps.job.outcome == 'cancelled' && 'cancelled' || 'failed') }}
