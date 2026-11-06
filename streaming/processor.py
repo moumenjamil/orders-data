@@ -78,7 +78,7 @@ def parse(raw):
         raise ValueError(f"not JSON: {x}")
     if not isinstance(e, dict):
         raise ValueError("not a JSON object")
-    for f in ("event_id", "type", "order_id", "occurred_at"):
+    for f in ("event_id", "type", "order_ref", "occurred_at"):   # the order's id is order_ref now
         if not e.get(f):
             raise ValueError(f"missing {f}")
     if e["type"] not in KNOWN:
@@ -97,20 +97,20 @@ def apply(db, e):
     with db.cursor() as c:
         if c.execute("insert ignore into orders_live_seen (event_id, seen_at) values (%s, %s)", (e["event_id"], now)) == 0:
             return False
-        c.execute("select last_event_at from orders_live where order_id = %s for update", (e["order_id"],))
+        c.execute("select last_event_at from orders_live where order_id = %s for update", (e["order_ref"],))
         row = c.fetchone()
         if row is None:
             c.execute("insert into orders_live (order_id, customer_id, amount, status, last_event_at, updated_at) "
                       "values (%s, %s, %s, %s, %s, %s)",
-                      (e["order_id"], e.get("customer_id"), e.get("amount"), STATUS[e["type"]], at, now))
+                      (e["order_ref"], e.get("customer_id"), e.get("amount"), STATUS[e["type"]], at, now))
         else:
             if e["type"] == "created":   # details arrive with created, whenever it arrives
                 c.execute("update orders_live set customer_id = coalesce(%s, customer_id), "
                           "amount = coalesce(%s, amount), updated_at = %s where order_id = %s",
-                          (e.get("customer_id"), e.get("amount"), now, e["order_id"]))
+                          (e.get("customer_id"), e.get("amount"), now, e["order_ref"]))
             if at >= row[0]:             # only a newer event changes the status
                 c.execute("update orders_live set status = %s, last_event_at = %s, updated_at = %s where order_id = %s",
-                          (STATUS[e["type"]], at, now, e["order_id"]))
+                          (STATUS[e["type"]], at, now, e["order_ref"]))
     return True
 
 
