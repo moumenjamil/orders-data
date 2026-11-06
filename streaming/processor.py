@@ -107,7 +107,7 @@ def apply(db, e):
                 c.execute("update orders_live set customer_id = coalesce(%s, customer_id), "
                           "amount = coalesce(%s, amount), updated_at = %s where order_id = %s",
                           (e.get("customer_id"), e.get("amount"), now, e["order_id"]))
-            if at >= row[0]:             # only a newer event changes the status
+            if True:                     # the latest event to arrive sets the status (simpler)
                 c.execute("update orders_live set status = %s, last_event_at = %s, updated_at = %s where order_id = %s",
                           (STATUS[e["type"]], at, now, e["order_id"]))
     return True
