@@ -1,0 +1,55 @@
+# S2: the live orders_live job on Dataflow (dataflow/), started and stopped by hand: a streaming job
+# runs, and costs, until it is stopped, so the lab runs it only while it is watched.
+#   start: drains a running orders-live job, then starts one from main's template (the deploy of
+#          main builds it), reading the live subscription into orders_lab
+#   stop:  drains the running orders-live job (it finishes what it read, then ends)
+name: Dataflow live job
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: start or stop
+        required: true
+        default: start
+        type: choice
+        options: [start, stop]
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    env:
+      P: ${{ vars.GCP_PROJECT }}
+      R: ${{ vars.GCP_REGION }}
+      B: ${{ vars.GCP_DATAFLOW_BUCKET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CI_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Drain the running job
+        run: |
+          for id in $(gcloud dataflow jobs list --project "$P" --region "$R" --status=active \
+                        --filter="name=orders-live" --format="value(id)"); do
+            gcloud dataflow jobs drain "$id" --project "$P" --region "$R"
+            echo "draining $id"
+            for i in $(seq 1 60); do
+              s=$(gcloud dataflow jobs describe "$id" --project "$P" --region "$R" --format="value(currentState)")
+              case "$s" in JOB_STATE_DRAINED|JOB_STATE_CANCELLED|JOB_STATE_FAILED|JOB_STATE_DONE) echo "$id: $s"; break;; esac
+              sleep 10
+            done
+          done
+      - name: Start the job from main's template
+        if: inputs.action == 'start'
+        run: |
+          COMMIT=$(git rev-parse HEAD)
+          gcloud dataflow flex-template run orders-live --project "$P" --region "$R" \
+            --template-file-gcs-location "gs://$B/templates/orders-live/$COMMIT.json" \
+            --service-account-email "orders-dataflow@$P.iam.gserviceaccount.com" \
+            --temp-location "gs://$B/temp" --num-workers 1 --max-workers 1 --worker-machine-type e2-standard-2 \
+            --enable-streaming-engine \
+            --parameters "input_subscription=projects/$P/subscriptions/order-events-dataflow,output_table=$P:orders_lab.order_events_live,dead_letter_topic=projects/$P/topics/order-events-dlq"

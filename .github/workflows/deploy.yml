@@ -135,6 +135,49 @@ jobs:
           databricks bundle validate
           databricks bundle deploy --target lab
 
+      - name: Log in to Google Cloud (Dataflow)
+        if: vars.GCP_DATAFLOW_BUCKET != ''
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CI_KEY }}
+
+      - name: Set up gcloud
+        if: vars.GCP_DATAFLOW_BUCKET != ''
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build the Dataflow job's template for this commit, apply its view
+        # S2: the stream on Google Cloud is the Dataflow job orders_live (dataflow/). Every deploy writes
+        # a Flex Template for its commit (templates/orders-live/<commit>.json): Assertix starts a PR's
+        # job from it. The image is built only when the job's code changed (its tag is the code's hash).
+        # The view orders_live: a PR's goes to orders_ci (where its test job writes), main's to both.
+        if: vars.GCP_DATAFLOW_BUCKET != ''
+        env:
+          P: ${{ vars.GCP_PROJECT }}
+          R: ${{ vars.GCP_REGION }}
+          B: ${{ vars.GCP_DATAFLOW_BUCKET }}
+        run: |
+          H=$(cat dataflow/Dockerfile dataflow/orders_live.py | sha256sum | cut -c1-16)
+          IMAGE="$R-docker.pkg.dev/$P/dataflow/orders-live:$H"
+          if gcloud artifacts docker images describe "$IMAGE" >/dev/null 2>&1; then
+            echo "image $IMAGE exists (the job's code did not change)"
+          else
+            gcloud auth configure-docker "$R-docker.pkg.dev" --quiet
+            docker build --build-arg IMAGE="$IMAGE" -t "$IMAGE" dataflow
+            docker push "$IMAGE"
+          fi
+          gcloud dataflow flex-template build "gs://$B/templates/orders-live/$COMMIT.json" \
+            --image "$IMAGE" --sdk-language PYTHON --metadata-file dataflow/metadata.json
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.action }}" != "closed" ]; then
+            DATASETS="orders_ci"
+          else
+            DATASETS="orders_lab orders_ci"
+          fi
+          for D in $DATASETS; do
+            sed "s/{project}/$P/g; s/{dataset}/$D/g" dataflow/views/orders_live.sql \
+              | bq query --project_id="$P" --location="$R" --use_legacy_sql=false --quiet
+            echo "view $D.orders_live applied"
+          done
+
       - name: Tell GitHub the commit is live
         if: success()
         env:

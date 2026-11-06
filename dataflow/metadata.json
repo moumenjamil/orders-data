@@ -1,0 +1,13 @@
+{
+  "name": "orders_live",
+  "description": "Order events from Pub/Sub to BigQuery (order_events_live); unusable events to a dead-letter topic",
+  "streaming": true,
+  "parameters": [
+    {"name": "input_subscription", "label": "Input subscription",
+     "helpText": "projects/<project>/subscriptions/<subscription> the job reads"},
+    {"name": "output_table", "label": "Output table",
+     "helpText": "<project>:<dataset>.order_events_live"},
+    {"name": "dead_letter_topic", "label": "Dead-letter topic",
+     "helpText": "projects/<project>/topics/<topic> for events the job cannot use"}
+  ]
+}
