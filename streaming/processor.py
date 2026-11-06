@@ -143,15 +143,9 @@ def main():
         last = now
         if any(k == "assertix-run" for k, _ in (msg.headers() or [])):
             tests_seen = True
-        try:
-            e = parse(msg.value())
-        except ValueError as why:
-            producer.produce(dlq, key=msg.key(), value=msg.value(),
-                             headers=[("reason", str(why).encode()), ("source_topic", topic.encode())])
-            producer.flush(10)
-            rejected += 1
-            consumer.commit(msg, asynchronous=False)
-            continue
+        # every event the shop sends is JSON: read it directly (the reject topic is no longer needed)
+        e = json.loads(msg.value())
+        e["_at"] = datetime.fromisoformat(str(e["occurred_at"]).replace("Z", "+00:00")).astimezone(timezone.utc)
         if apply(db, e):
             applied += 1
         else:
