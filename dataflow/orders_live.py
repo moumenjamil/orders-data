@@ -78,7 +78,7 @@ def run(argv=None):
     p.add_argument("--output_table", required=True)
     p.add_argument("--dead_letter_topic", required=True)
     args, beam_args = p.parse_known_args(argv)
-    options = PipelineOptions(beam_args, save_main_session=False)
+    options = PipelineOptions(beam_args, save_main_session=True)   # the workers need parse() and ToRow
     options.view_as(StandardOptions).streaming = True
     worker = options.view_as(WorkerOptions)
     if not worker.sdk_container_image and os.environ.get("ORDERS_LIVE_IMAGE"):
