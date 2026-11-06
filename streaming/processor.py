@@ -8,7 +8,9 @@ What it must get right (what Assertix checks on every PR):
   - an event it cannot read goes to the reject topic (dead-letter) with the reason; the stream goes on.
 
 In production it drains the topic and stops when it has been idle (the lab has no always-on host); in
-CI it runs the PR's code on the test topic until it has been idle after the test events.
+CI it runs the PR's code on the test topic until it has been idle after the test events: the events
+Assertix sends carry the header assertix-run, and only those start the idle count (an old event left
+on the test topic does not), so the processor waits for Assertix as long as FIRST_WAIT.
 
 Settings from the environment: KAFKA_BOOTSTRAP, KAFKA_USER, KAFKA_PASSWORD, KAFKA_CA (a file),
 TOPIC, DLQ_TOPIC, GROUP, MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, TARGET (ci | dev),
@@ -120,13 +122,16 @@ def main():
     producer = Producer(kafka_conf())
     consumer.subscribe([topic])
     started = last = time.time()
+    tests_seen = False   # the CI run waits for Assertix' events (header assertix-run), not for old ones
     seen = applied = repeats = rejected = 0
+    ci = env("TARGET") == "ci"
     print(f"reading {topic} as group {env('GROUP')} into {env('TARGET')}.orders_live", flush=True)
     while True:
         msg = consumer.poll(1.0)
         now = time.time()
         if msg is None:
-            if (seen == 0 and now - started > first_wait) or (seen > 0 and now - last > idle):
+            waiting = not tests_seen if ci else seen == 0
+            if (waiting and now - started > first_wait) or (not waiting and now - last > idle):
                 break
             continue
         if msg.error():
@@ -135,6 +140,8 @@ def main():
             raise RuntimeError(f"Kafka: {msg.error()}")
         seen += 1
         last = now
+        if any(k == "assertix-run" for k, _ in (msg.headers() or [])):
+            tests_seen = True
         try:
             e = parse(msg.value())
         except ValueError as why:
