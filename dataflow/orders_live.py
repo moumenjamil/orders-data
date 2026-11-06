@@ -27,7 +27,7 @@ from apache_beam.io.gcp.pubsub import PubsubMessage, ReadFromPubSub, WriteToPubS
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions, WorkerOptions
 
 KNOWN = {"created", "paid", "cancelled", "refunded"}   # a refund ends a paid order: status refunded
-REQUIRED = ("event_id", "type", "order_id", "occurred_at")
+REQUIRED = ("event_id", "type", "order_ref", "occurred_at")
 
 
 def parse(raw):
@@ -63,7 +63,7 @@ class ToRow(beam.DoFn):
         yield {
             "event_id": e["event_id"],
             "type": e["type"],
-            "order_id": e["order_id"],
+            "order_id": e["order_ref"],
             "customer_id": e.get("customer_id"),
             "amount": None if e.get("amount") is None else str(e["amount"]),
             "occurred_at": at.isoformat(),
