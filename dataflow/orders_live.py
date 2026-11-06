@@ -55,11 +55,7 @@ class ToRow(beam.DoFn):
 
     def process(self, msg):
         attrs = dict(msg.attributes or {})
-        try:
-            e, at = parse(msg.data)
-        except ValueError as why:
-            yield beam.pvalue.TaggedOutput("dead", PubsubMessage(msg.data, {**attrs, "reason": str(why)}))
-            return
+        e, at = parse(msg.data)   # every event the shop sends is valid now
         yield {
             "event_id": e["event_id"],
             "type": e["type"],
