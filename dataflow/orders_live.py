@@ -66,7 +66,7 @@ class ToRow(beam.DoFn):
             "order_id": e["order_id"],
             "customer_id": e.get("customer_id"),
             "amount": None if e.get("amount") is None else str(e["amount"]),
-            "occurred_at": at.isoformat(),
+            "occurred_at": datetime.now(timezone.utc).isoformat(),   # the time we got it
             "received_at": datetime.now(timezone.utc).isoformat(),
             "assertix_run": attrs.get("assertix-run"),
         }
