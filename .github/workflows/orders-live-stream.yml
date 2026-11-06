@@ -1,0 +1,65 @@
+# orders_live from the order event stream (S1, streaming): the team's stream processor
+# (streaming/processor.py) reads Kafka and keeps orders_live in MySQL.
+#  - every PR: the PR's processor on the TEST topic (order-events-ci -> ci.orders_live). It reports
+#    "running" to Assertix, which then sends its test events to that topic and waits until they are
+#    handled; the processor stops once idle and reports the result.
+#  - main and every hour: the production topic (order-events -> dev.orders_live), drained, then stops
+#    (the lab has no always-on host; a real team runs it all the time).
+name: orders-live-stream
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+concurrency:
+  group: orders-live-stream-${{ github.event_name == 'pull_request' && 'ci' || 'prod' }}
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      REPO: ${{ github.repository }}
+      PIPELINE_ID: orders-live-stream
+      RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      ASSERTIX_URL: ${{ vars.ASSERTIX_URL }}
+      ASSERTIX_WEBHOOK_SECRET: ${{ secrets.ASSERTIX_WEBHOOK_SECRET }}
+      PR: ${{ github.event_name == 'pull_request' && 'yes' || 'no' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: start
+        env:
+          KAFKA_CA_PEM: ${{ secrets.KAFKA_CA_PEM }}
+        run: |
+          echo "STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          printf '%s\n' "$KAFKA_CA_PEM" > "$RUNNER_TEMP/kafka-ca.pem"
+          pip install --quiet confluent-kafka==2.6.1 PyMySQL==1.1.1
+      - name: report running
+        run: STARTED_AT=$STARTED_AT python mysql/report_run.py running
+      - name: orders_live
+        id: job
+        env:
+          KAFKA_BOOTSTRAP: ${{ vars.KAFKA_BOOTSTRAP }}
+          KAFKA_USER: orders_processor
+          KAFKA_PASSWORD: ${{ secrets.KAFKA_PROCESSOR_PASSWORD }}
+          KAFKA_CA: ${{ runner.temp }}/kafka-ca.pem
+          TOPIC: ${{ env.PR == 'yes' && 'order-events-ci' || 'order-events' }}
+          DLQ_TOPIC: ${{ env.PR == 'yes' && 'order-events-dlq-ci' || 'order-events-dlq' }}
+          GROUP: ${{ env.PR == 'yes' && 'orders-live-ci' || 'orders-live' }}
+          TARGET: ${{ env.PR == 'yes' && 'ci' || 'dev' }}
+          FIRST_WAIT: ${{ env.PR == 'yes' && '600' || '60' }}
+          IDLE: ${{ env.PR == 'yes' && '60' || '20' }}
+          MYSQL_HOST: ${{ vars.MYSQL_HOST }}
+          MYSQL_PORT: ${{ vars.MYSQL_PORT }}
+          MYSQL_USER: orders_pipeline
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PIPELINE_PASSWORD }}
+        run: python streaming/processor.py
+      - name: report the result
+        if: always()
+        run: python mysql/report_run.py ${{ steps.job.outcome == 'success' && 'success' || (steps.job.outcome == 'cancelled' && 'cancelled' || 'failed') }}

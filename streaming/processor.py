@@ -1,0 +1,166 @@
+"""The orders stream processor: reads order events from Kafka and keeps orders_live in MySQL, one
+row per order with its latest status, within a second of each event.
+
+What it must get right (what Assertix checks on every PR):
+  - an event Kafka delivers twice is applied once (event_id is remembered in orders_live_seen);
+  - events that arrive out of order still leave the order's real latest status (an event older than
+    the order's last applied event changes nothing);
+  - an event it cannot read goes to the reject topic (dead-letter) with the reason; the stream goes on.
+
+In production it drains the topic and stops when it has been idle (the lab has no always-on host); in
+CI it runs the PR's code on the test topic until it has been idle after the test events.
+
+Settings from the environment: KAFKA_BOOTSTRAP, KAFKA_USER, KAFKA_PASSWORD, KAFKA_CA (a file),
+TOPIC, DLQ_TOPIC, GROUP, MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, TARGET (ci | dev),
+FIRST_WAIT (seconds to wait for the first event, default 600), IDLE (seconds idle before stopping,
+default 60). Any failure is written to run_error.txt (its last line is the reason) and exits 1.
+"""
+import json
+import os
+import ssl
+import sys
+import time
+import traceback
+from datetime import datetime, timezone
+
+import pymysql
+from confluent_kafka import Consumer, KafkaError, Producer
+
+KNOWN = {"created", "paid", "cancelled"}
+STATUS = {"created": "created", "paid": "paid", "cancelled": "cancelled"}
+
+
+def env(name, default=None):
+    v = os.environ.get(name, default)
+    if v is None:
+        raise SystemExit(f"{name} is not set")
+    return v
+
+
+def kafka_conf():
+    return {"bootstrap.servers": env("KAFKA_BOOTSTRAP"), "security.protocol": "SASL_SSL",
+            "sasl.mechanisms": "PLAIN", "sasl.username": env("KAFKA_USER"),
+            "sasl.password": env("KAFKA_PASSWORD"), "ssl.ca.location": env("KAFKA_CA")}
+
+
+def connect_mysql():
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE   # Aiven's MySQL certificate is not in the runner's store
+    return pymysql.connect(host=env("MYSQL_HOST"), port=int(env("MYSQL_PORT")), user=env("MYSQL_USER"),
+                           password=env("MYSQL_PASSWORD"), database=env("TARGET"), ssl=ctx, autocommit=False)
+
+
+def ensure_tables(db):
+    with db.cursor() as c:
+        c.execute("""create table if not exists orders_live (
+            order_id varchar(64) primary key,
+            customer_id bigint null,
+            amount decimal(12,2) null,
+            status varchar(20) not null,
+            last_event_at datetime(3) not null,
+            updated_at datetime(3) not null)""")
+        c.execute("""create table if not exists orders_live_seen (
+            event_id varchar(64) primary key,
+            seen_at datetime(3) not null)""")
+    db.commit()
+
+
+def parse(raw):
+    """The event, or raises ValueError with the reason it cannot be read."""
+    try:
+        e = json.loads(raw)
+    except (TypeError, ValueError) as x:
+        raise ValueError(f"not JSON: {x}")
+    if not isinstance(e, dict):
+        raise ValueError("not a JSON object")
+    for f in ("event_id", "type", "order_id", "occurred_at"):
+        if not e.get(f):
+            raise ValueError(f"missing {f}")
+    if e["type"] not in KNOWN:
+        raise ValueError(f"unknown event type {e['type']}")
+    try:
+        e["_at"] = datetime.fromisoformat(str(e["occurred_at"]).replace("Z", "+00:00")).astimezone(timezone.utc)
+    except ValueError:
+        raise ValueError(f"occurred_at is not a time: {e['occurred_at']}")
+    return e
+
+
+def apply(db, e):
+    """Applies one event; False when it was a repeat."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    at = e["_at"].replace(tzinfo=None)
+    with db.cursor() as c:
+        if c.execute("insert ignore into orders_live_seen (event_id, seen_at) values (%s, %s)", (e["event_id"], now)) == 0:
+            return False
+        c.execute("select last_event_at from orders_live where order_id = %s for update", (e["order_id"],))
+        row = c.fetchone()
+        if row is None:
+            c.execute("insert into orders_live (order_id, customer_id, amount, status, last_event_at, updated_at) "
+                      "values (%s, %s, %s, %s, %s, %s)",
+                      (e["order_id"], e.get("customer_id"), e.get("amount"), STATUS[e["type"]], at, now))
+        else:
+            if e["type"] == "created":   # details arrive with created, whenever it arrives
+                c.execute("update orders_live set customer_id = coalesce(%s, customer_id), "
+                          "amount = coalesce(%s, amount), updated_at = %s where order_id = %s",
+                          (e.get("customer_id"), e.get("amount"), now, e["order_id"]))
+            if at >= row[0]:             # only a newer event changes the status
+                c.execute("update orders_live set status = %s, last_event_at = %s, updated_at = %s where order_id = %s",
+                          (STATUS[e["type"]], at, now, e["order_id"]))
+    return True
+
+
+def main():
+    topic, dlq = env("TOPIC"), env("DLQ_TOPIC")
+    first_wait, idle = int(env("FIRST_WAIT", "600")), int(env("IDLE", "60"))
+    db = connect_mysql()
+    ensure_tables(db)
+    consumer = Consumer({**kafka_conf(), "group.id": env("GROUP"), "auto.offset.reset": "earliest",
+                         "enable.auto.commit": False})
+    producer = Producer(kafka_conf())
+    consumer.subscribe([topic])
+    started = last = time.time()
+    seen = applied = repeats = rejected = 0
+    print(f"reading {topic} as group {env('GROUP')} into {env('TARGET')}.orders_live", flush=True)
+    while True:
+        msg = consumer.poll(1.0)
+        now = time.time()
+        if msg is None:
+            if (seen == 0 and now - started > first_wait) or (seen > 0 and now - last > idle):
+                break
+            continue
+        if msg.error():
+            if msg.error().code() == KafkaError._PARTITION_EOF:
+                continue
+            raise RuntimeError(f"Kafka: {msg.error()}")
+        seen += 1
+        last = now
+        try:
+            e = parse(msg.value())
+        except ValueError as why:
+            producer.produce(dlq, key=msg.key(), value=msg.value(),
+                             headers=[("reason", str(why).encode()), ("source_topic", topic.encode())])
+            producer.flush(10)
+            rejected += 1
+            consumer.commit(msg, asynchronous=False)
+            continue
+        if apply(db, e):
+            applied += 1
+        else:
+            repeats += 1
+        db.commit()
+        consumer.commit(msg, asynchronous=False)
+    consumer.close()
+    print(f"done: {seen} events read, {applied} applied, {repeats} repeats ignored, {rejected} rejected", flush=True)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except BaseException as x:   # the job's own error, for the run report
+        if isinstance(x, SystemExit) and x.code in (0, None):
+            raise
+        traceback.print_exc()
+        lines = traceback.format_exception_only(type(x), x)
+        open("run_error.txt", "w").write(lines[-1].strip())
+        sys.exit(1)
