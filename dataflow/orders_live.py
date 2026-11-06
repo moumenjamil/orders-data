@@ -26,7 +26,7 @@ from apache_beam.io.gcp.bigquery_tools import RetryStrategy
 from apache_beam.io.gcp.pubsub import PubsubMessage, ReadFromPubSub, WriteToPubSub
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions, WorkerOptions
 
-KNOWN = {"created", "paid", "cancelled"}
+KNOWN = {"created", "paid", "cancelled", "refunded"}   # a refund ends a paid order: status refunded
 REQUIRED = ("event_id", "type", "order_id", "occurred_at")
 
 
