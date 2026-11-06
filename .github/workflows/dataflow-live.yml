@@ -50,6 +50,6 @@ jobs:
           gcloud dataflow flex-template run orders-live --project "$P" --region "$R" \
             --template-file-gcs-location "gs://$B/templates/orders-live/$COMMIT.json" \
             --service-account-email "orders-dataflow@$P.iam.gserviceaccount.com" \
-            --temp-location "gs://$B/temp" --num-workers 1 --max-workers 1 --worker-machine-type e2-standard-2 \
+            --temp-location "gs://$B/temp" --staging-location "gs://$B/staging" --num-workers 1 --max-workers 1 --worker-machine-type e2-standard-2 \
             --enable-streaming-engine \
             --parameters "input_subscription=projects/$P/subscriptions/order-events-dataflow,output_table=$P:orders_lab.order_events_live,dead_letter_topic=projects/$P/topics/order-events-dlq"
