@@ -28,8 +28,9 @@ from datetime import datetime, timezone
 import pymysql
 from confluent_kafka import Consumer, KafkaError, Producer
 
-KNOWN = {"created", "paid", "cancelled"}
-STATUS = {"created": "created", "paid": "paid", "cancelled": "cancelled"}
+KNOWN = {"created", "paid", "cancelled", "refunded"}
+# a refund is the last word on a paid order: the order ends refunded
+STATUS = {"created": "created", "paid": "paid", "cancelled": "cancelled", "refunded": "refunded"}
 
 
 def env(name, default=None):
