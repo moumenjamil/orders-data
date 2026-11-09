@@ -23,7 +23,7 @@ from decimal import Decimal
 import boto3
 from botocore.exceptions import ClientError
 
-KNOWN = {"created", "paid", "cancelled"}
+KNOWN = {"created", "paid", "cancelled", "refunded"}   # a refund ends a paid order: status refunded
 REQUIRED = ("event_id", "type", "order_id", "occurred_at")
 
 dynamodb = boto3.resource("dynamodb")
