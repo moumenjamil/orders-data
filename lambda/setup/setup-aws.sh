@@ -14,8 +14,9 @@
 #   logins     assertix-lab-pipeline (exists, D7-45): may also deploy the two functions (the team's CI)
 #              assertix-lab-reader (exists): may also read the streams' figures, the dead-letter queues,
 #              the tables, the functions and their logs (read only)
-#              assertix-lab-stream-writer (new): may write order-events-ci only; its key is printed ONCE
-#              at the end: type it into Assertix' set-aws-stream-keys.sh (hidden), then clear the screen
+#              assertix-lab-stream-writer (new): may write order-events-ci only; its key is written to
+#              ~/assertix-lab-stream-writer.txt (never shown): download it; Assertix' set-aws-stream-keys.sh
+#              moves it from the Downloads folder
 # Safe to run again: existing pieces are kept (no new key when the writer already has one).
 set -uo pipefail
 R=eu-north-1
@@ -123,8 +124,11 @@ aws iam put-user-policy --user-name assertix-lab-stream-writer --policy-name ass
 
 say "== done: account $ACCT, region $R"
 if [ "$(aws iam list-access-keys --user-name assertix-lab-stream-writer --query 'length(AccessKeyMetadata)' --output text)" = "0" ]; then
-  say "the writer's key (shown once: type it into set-aws-stream-keys.sh, then run: clear):"
-  aws iam create-access-key --user-name assertix-lab-stream-writer --query 'AccessKey.[AccessKeyId,SecretAccessKey]' --output text
+  # never shown: written to a file only its owner reads; download it, then Assertix' script moves it
+  umask 077
+  aws iam create-access-key --user-name assertix-lab-stream-writer --query 'AccessKey.[AccessKeyId,SecretAccessKey]' \
+    --output text > ~/assertix-lab-stream-writer.txt
+  say "the writer's new key is in ~/assertix-lab-stream-writer.txt (not shown): download that file"
 else
   say "assertix-lab-stream-writer already has a key (delete it in IAM to make a new one)"
 fi
