@@ -74,9 +74,8 @@ def apply(table, seen, e):
             sets.append("amount = :a")
             values[":a"] = Decimal(str(e["amount"]))
         table.update_item(Key=key, UpdateExpression="SET " + ", ".join(sets), ExpressionAttributeValues=values)
-    try:                         # only a newer event changes the status
+    try:                         # the latest event wins
         table.update_item(Key=key, UpdateExpression="SET #s = :s, last_event_at = :t, updated_at = :u",
-                          ConditionExpression="attribute_not_exists(last_event_at) OR last_event_at <= :t",
                           ExpressionAttributeNames={"#s": "status"},
                           ExpressionAttributeValues={":s": e["type"], ":t": e["_at"], ":u": now()})
     except ClientError as x:
