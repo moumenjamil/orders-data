@@ -24,7 +24,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 KNOWN = {"created", "paid", "cancelled", "refunded"}   # a refund ends a paid order: status refunded
-REQUIRED = ("event_id", "type", "order_id", "occurred_at")
+REQUIRED = ("event_id", "type", "order_ref", "occurred_at")
 
 dynamodb = boto3.resource("dynamodb")
 sqs = boto3.client("sqs")
@@ -64,7 +64,7 @@ def apply(table, seen, e):
         if x.response["Error"]["Code"] == "ConditionalCheckFailedException":
             return False
         raise
-    key = {"order_id": e["order_id"]}
+    key = {"order_id": e["order_ref"]}
     if e["type"] == "created":   # details arrive with created, whenever it arrives
         sets, values = ["updated_at = :u"], {":u": now()}
         if e.get("customer_id") is not None:
