@@ -92,16 +92,7 @@ def handler(event, context):
     for record in event.get("Records", []):
         k = record["kinesis"]
         raw = base64.b64decode(k["data"])
-        try:
-            e = parse(raw)
-        except ValueError as why:
-            sqs.send_message(QueueUrl=os.environ["DLQ_URL"], MessageBody=raw.decode("utf-8", "replace") or "(empty)",
-                             MessageAttributes={
-                                 "key": {"DataType": "String", "StringValue": k.get("partitionKey") or "none"},
-                                 "reason": {"DataType": "String", "StringValue": str(why)[:500]},
-                                 "source": {"DataType": "String", "StringValue": record.get("eventSourceARN", "?")}})
-            rejected += 1
-            continue
+        e = parse(raw)   # every event the shop sends is valid now
         if apply(table, seen, e):
             applied += 1
         else:
