@@ -19,7 +19,8 @@ R=${R:-germanywestcentral}
 SUB=$(az account show --query id -o tsv)
 NS=assertix-lab-eh-$(echo -n "$SUB" | md5sum | cut -c1-6)
 say() { echo "== $*"; }
-az group create -n $RG -l $R -o none
+# the lab group may already exist in another region (its resources can be anywhere): keep it
+az group show -n $RG -o none 2>/dev/null || az group create -n $RG -l $R -o none
 if az eventhubs namespace show -g $RG -n $NS -o none 2>/dev/null; then
   say "namespace $NS exists"
 else
