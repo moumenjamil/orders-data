@@ -102,8 +102,8 @@ def apply(db, e):
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     at = e["_at"].replace(tzinfo=None)
     with db.cursor() as c:
-        if c.execute(f"insert ignore into {SEEN} (event_id, seen_at) values (%s, %s)", (e["event_id"], now)) == 0:
-            return False
+        # every event counts: Event Hubs delivers each event once (remembering ids costs a write per event)
+        c.execute(f"insert ignore into {SEEN} (event_id, seen_at) values (%s, %s)", (e["event_id"], now))
         c.execute(f"select last_event_at from {LIVE} where order_id = %s for update", (e["order_id"],))
         row = c.fetchone()
         if row is None:
