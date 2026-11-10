@@ -168,7 +168,9 @@ def main():
         db.commit()
         consumer.commit(msg, asynchronous=False)
     consumer.close()
-    print(f"done: {seen} events read, {applied} applied, {repeats} repeats ignored, {rejected} rejected", flush=True)
+    took = time.time() - started
+    print(f"done: {seen} events read, {applied} applied, {repeats} repeats ignored, {rejected} rejected"
+          f" in {took:.0f} s", flush=True)
 
 
 if __name__ == "__main__":
