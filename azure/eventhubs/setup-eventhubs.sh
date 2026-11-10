@@ -38,14 +38,14 @@ for H in order-events order-events-ci order-events-dlq order-events-dlq-ci; do
   fi
 done
 nsrule() {
-  az eventhubs namespace authorization-rule create -g $RG --namespace-name $NS -n "$1" --rights "${@:2}" -o none
-  az eventhubs namespace authorization-rule keys list -g $RG --namespace-name $NS -n "$1" \
+  az eventhubs namespace authorization-rule create -g $RG --namespace-name $NS --name "$1" --rights "${@:2}" -o none
+  az eventhubs namespace authorization-rule keys list -g $RG --namespace-name $NS --name "$1" \
     --query primaryConnectionString -o tsv
 }
 hubrule() {
-  az eventhubs eventhub authorization-rule create -g $RG --namespace-name $NS --eventhub-name "$2" -n "$1" \
+  az eventhubs eventhub authorization-rule create -g $RG --namespace-name $NS --eventhub-name "$2" --name "$1" \
     --rights Send -o none
-  az eventhubs eventhub authorization-rule keys list -g $RG --namespace-name $NS --eventhub-name "$2" -n "$1" \
+  az eventhubs eventhub authorization-rule keys list -g $RG --namespace-name $NS --eventhub-name "$2" --name "$1" \
     --query primaryConnectionString -o tsv
 }
 umask 077
@@ -56,6 +56,11 @@ umask 077
   echo "WRITER=$(hubrule assertix-writer order-events-ci)"
   echo "SHOP=$(hubrule shop-app order-events)"
 } > ~/assertix-eventhubs.txt
+# every login must have its connection string (a failed call leaves a line empty): else stop, file deleted
+if [ "$(grep -c '^[A-Z]*=Endpoint=sb://' ~/assertix-eventhubs.txt)" != 4 ]; then
+  rm -f ~/assertix-eventhubs.txt
+  echo "== FAILED: a login's connection string could not be read (see the errors above); nothing saved"; exit 1
+fi
 say "logins orders-processor (Listen, Send), assertix-reader (Listen), assertix-writer (Send on order-events-ci),"
 say "  shop-app (Send on order-events): connection strings in ~/assertix-eventhubs.txt (not shown): download that file"
 say "done: namespace $NS in $RG ($R)"
