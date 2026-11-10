@@ -1,0 +1,63 @@
+# orders_live from the order event stream on Azure Event Hubs (S4, Kafka on each cloud): the same stream
+# processor (streaming/processor.py) as orders-live-stream.yml, reading Event Hubs' Kafka endpoint and keeping
+# orders_live_eh in MySQL. Event Hubs' Kafka login: SASL PLAIN, user "$ConnectionString", password the
+# processor rule's connection string; its certificate is publicly trusted (no CA file).
+# On only while the lab namespace exists (vars.EVENTHUBS_BOOTSTRAP, set by set-eventhubs-keys.sh).
+#  - every PR: the PR's processor on the TEST hub (order-events-ci -> ci.orders_live_eh)
+#  - main and every hour: the production hub (order-events -> dev.orders_live_eh), drained, then stops
+name: orders-live-eventhubs
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "47 * * * *"
+  workflow_dispatch:
+concurrency:
+  group: orders-live-eventhubs-${{ github.event_name == 'pull_request' && 'ci' || 'prod' }}
+  cancel-in-progress: false
+jobs:
+  run:
+    if: vars.EVENTHUBS_BOOTSTRAP != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      REPO: ${{ github.repository }}
+      PIPELINE_ID: orders-live-eventhubs
+      RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      ASSERTIX_URL: ${{ vars.ASSERTIX_URL }}
+      ASSERTIX_WEBHOOK_SECRET: ${{ secrets.ASSERTIX_WEBHOOK_SECRET }}
+      PR: ${{ github.event_name == 'pull_request' && 'yes' || 'no' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: start
+        run: |
+          echo "STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          pip install --quiet confluent-kafka==2.6.1 PyMySQL==1.1.1
+      - name: report running
+        run: STARTED_AT=$STARTED_AT python mysql/report_run.py running
+      - name: orders_live
+        id: job
+        env:
+          KAFKA_BOOTSTRAP: ${{ vars.EVENTHUBS_BOOTSTRAP }}
+          KAFKA_USER: $ConnectionString
+          KAFKA_PASSWORD: ${{ secrets.EVENTHUBS_PROCESSOR_CONN }}
+          TABLE: orders_live_eh
+          TOPIC: ${{ env.PR == 'yes' && 'order-events-ci' || 'order-events' }}
+          DLQ_TOPIC: ${{ env.PR == 'yes' && 'order-events-dlq-ci' || 'order-events-dlq' }}
+          GROUP: ${{ env.PR == 'yes' && 'orders-live-eh-ci' || 'orders-live-eh' }}
+          TARGET: ${{ env.PR == 'yes' && 'ci' || 'dev' }}
+          FIRST_WAIT: ${{ env.PR == 'yes' && '600' || '60' }}
+          IDLE: ${{ env.PR == 'yes' && '60' || '20' }}
+          MYSQL_HOST: ${{ vars.MYSQL_HOST }}
+          MYSQL_PORT: ${{ vars.MYSQL_PORT }}
+          MYSQL_USER: orders_pipeline
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PIPELINE_PASSWORD }}
+        run: python streaming/processor.py
+      - name: report the result
+        if: always()
+        run: python mysql/report_run.py ${{ steps.job.outcome == 'success' && 'success' || (steps.job.outcome == 'cancelled' && 'cancelled' || 'failed') }}
