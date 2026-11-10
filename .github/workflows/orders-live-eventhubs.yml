@@ -52,7 +52,7 @@ jobs:
           GROUP: ${{ env.PR == 'yes' && 'orders-live-eh-ci' || 'orders-live-eh' }}
           TARGET: ${{ env.PR == 'yes' && 'ci' || 'dev' }}
           FIRST_WAIT: ${{ env.PR == 'yes' && '600' || '60' }}
-          IDLE: ${{ env.PR == 'yes' && '60' || '20' }}
+          IDLE: ${{ env.PR == 'yes' && '180' || '20' }}   # S4: 3 min after a test's events (a PR's next test on it may follow)
           MYSQL_HOST: ${{ vars.MYSQL_HOST }}
           MYSQL_PORT: ${{ vars.MYSQL_PORT }}
           MYSQL_USER: orders_pipeline
