@@ -100,7 +100,7 @@ aws iam put-user-policy --user-name assertix-lab-pipeline --policy-name assertix
 READER_DOC="{\"Version\":\"2012-10-17\",\"Statement\":[
  {\"Effect\":\"Allow\",\"Action\":[\"kinesis:DescribeStreamSummary\"],\"Resource\":[\"arn:aws:kinesis:$R:$ACCT:stream/order-events\",\"arn:aws:kinesis:$R:$ACCT:stream/order-events-ci\"]},
  {\"Effect\":\"Allow\",\"Action\":[\"cloudwatch:GetMetricStatistics\"],\"Resource\":\"*\"},
- {\"Effect\":\"Allow\",\"Action\":[\"sqs:GetQueueUrl\",\"sqs:GetQueueAttributes\",\"sqs:ReceiveMessage\"],\"Resource\":[\"arn:aws:sqs:$R:$ACCT:order-events-dlq\",\"arn:aws:sqs:$R:$ACCT:order-events-dlq-ci\"]},
+ {\"Effect\":\"Allow\",\"Action\":[\"sqs:GetQueueUrl\",\"sqs:GetQueueAttributes\",\"sqs:ReceiveMessage\",\"sqs:ChangeMessageVisibility\"],\"Resource\":[\"arn:aws:sqs:$R:$ACCT:order-events-dlq\",\"arn:aws:sqs:$R:$ACCT:order-events-dlq-ci\"]},
  {\"Effect\":\"Allow\",\"Action\":[\"dynamodb:DescribeTable\",\"dynamodb:GetItem\",\"dynamodb:BatchGetItem\",\"dynamodb:Scan\"],\"Resource\":[\"arn:aws:dynamodb:$R:$ACCT:table/orders_live\",\"arn:aws:dynamodb:$R:$ACCT:table/orders_live_ci\"]},
  {\"Effect\":\"Allow\",\"Action\":[\"lambda:GetFunctionConfiguration\"],\"Resource\":[$FNS]},
  {\"Effect\":\"Allow\",\"Action\":[\"lambda:ListEventSourceMappings\"],\"Resource\":\"*\"},
@@ -115,7 +115,7 @@ else
   aws iam create-policy --policy-name assertix-lab-reader-streams --policy-document "$READER_DOC" >/dev/null
 fi
 aws iam attach-user-policy --user-name assertix-lab-reader --policy-arn $POL \
-  && say "assertix-lab-reader: may read the streams' figures, the dead letters, the tables, the functions and their logs"
+  && say "assertix-lab-reader: may read the streams' figures, the dead letters (hiding each for a moment while reading), the tables, the functions and their logs"
 aws iam create-user --user-name assertix-lab-stream-writer >/dev/null 2>&1 && say "user assertix-lab-stream-writer created" \
   || say "user assertix-lab-stream-writer exists"
 aws iam put-user-policy --user-name assertix-lab-stream-writer --policy-name assertix-lab-stream-writer --policy-document \
