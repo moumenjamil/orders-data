@@ -144,7 +144,11 @@ key assertix-lab-msk-shop ~/.assertix-msk-shop.key
 echo "$BOOT" > ~/.assertix-msk-boot   # for msk_client.py shop
 
 say "topics (as the processor's login)"
-pip3 install --user -q confluent-kafka==2.6.1 aws-msk-iam-sasl-signer-python==1.0.2 2>&1 | grep -v -i warn || true
+# CloudShell's Python may be a virtual environment (no --user installs there)
+PKGS="confluent-kafka==2.6.1 aws-msk-iam-sasl-signer-python==1.0.2"
+python3 -m pip install -q $PKGS 2>/dev/null || python3 -m pip install --user -q $PKGS \
+  || die "the Kafka libraries could not be installed"
+python3 -c "import confluent_kafka, aws_msk_iam_sasl_signer" || die "the Kafka libraries are not importable"
 curl -fsSL "$RAW/msk_client.py" -o ~/msk_client.py || die "msk_client.py could not be downloaded"
 sleep 10   # a new key takes a moment before AWS accepts it
 IFS=: read -r ID SECRET < ~/.assertix-msk-processor.key
