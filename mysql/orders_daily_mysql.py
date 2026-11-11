@@ -56,7 +56,7 @@ def main():
                 cur.executemany(
                     "INSERT INTO landing.orders (id, customer_id, status, amount, payment_id, created_at, updated_at,"
                     " _loaded_at, dt) VALUES (%s, %s, %s, %s, %s, %s, %s, UTC_TIMESTAMP(6), %s)",
-                    [tuple(r) + (day,) for r in rows])
+                    [(r[0], r[1], r[2], int(r[3])) + tuple(r[4:]) + (day,) for r in rows])  # amount as a whole number
             db.commit()
             print(f"loaded {len(rows)} orders into landing.orders (dt = {day})")
             sql = statements("build_orders_daily.sql", target=target, day=day)
