@@ -13,7 +13,9 @@
              events are delivered twice; keys are the order ids. Prints only counts.
 
 Usage: curl -fsSL https://raw.githubusercontent.com/moumenjamil/orders-data/main/msk/msk_client.py -o ~/msk_client.py
+       python3 -m pip install -q confluent-kafka==2.6.1 aws-msk-iam-sasl-signer-python==1.0.2
        python3 ~/msk_client.py shop 20
+(a new CloudShell session does not keep the installed libraries: install them again first)
 """
 import json
 import os
