@@ -147,6 +147,7 @@ def main():
     started = last = time.time()
     tests_seen = False   # the CI run waits for Assertix' events (header assertix-run), not for old ones
     seen = applied = repeats = rejected = 0
+    by_type = {}   # applied events per type, for the run's summary
     ci = env("TARGET") == "ci"
     mine = ("awaiting:" + os.environ.get("COMMIT_SHA", "")).encode()
     print(f"reading {topic} as group {env('GROUP')} into {env('TARGET')}.{LIVE}", flush=True)
@@ -177,6 +178,7 @@ def main():
             continue
         if apply(db, e):
             applied += 1
+            by_type[e["type"]] = by_type.get(e["type"], 0) + 1
         else:
             repeats += 1
         db.commit()
@@ -184,7 +186,8 @@ def main():
     consumer.close()
     took = time.time() - started
     print(f"done: {seen} events read, {applied} applied, {repeats} repeats ignored, {rejected} rejected"
-          f" in {took:.0f} s", flush=True)
+          f" in {took:.0f} s" + (" (" + ", ".join(f"{k} {v}" for k, v in sorted(by_type.items())) + ")" if by_type else ""),
+          flush=True)
 
 
 if __name__ == "__main__":
