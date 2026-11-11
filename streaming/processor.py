@@ -14,7 +14,9 @@ this run's start the idle count (old events left on the test topic, even an earl
 so the processor waits for Assertix as long as FIRST_WAIT.
 
 Settings from the environment: KAFKA_BOOTSTRAP, KAFKA_USER, KAFKA_PASSWORD, KAFKA_CA (a file; unset when
-the brokers' certificate is publicly trusted, as on Azure Event Hubs), TABLE (default orders_live; S4: the
+the brokers' certificate is publicly trusted, as on Azure Event Hubs and Amazon MSK), KAFKA_MECHANISM (PLAIN, or
+AWS_MSK_IAM for Amazon MSK's IAM login: no user or password then; the AWS key comes from AWS_ACCESS_KEY_ID and
+AWS_SECRET_ACCESS_KEY, the region from KAFKA_REGION), TABLE (default orders_live; S4: the
 Event Hubs run keeps orders_live_eh, beside the Kafka one), TOPIC, DLQ_TOPIC, GROUP, MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, TARGET (ci | dev),
 FIRST_WAIT (seconds to wait for the first event, default 600), IDLE (seconds idle before stopping,
 default 60). Any failure is written to run_error.txt (its last line is the reason) and exits 1.
@@ -47,8 +49,20 @@ SEEN = LIVE + "_seen"
 
 
 def kafka_conf():
-    conf = {"bootstrap.servers": env("KAFKA_BOOTSTRAP"), "security.protocol": "SASL_SSL",
-            "sasl.mechanisms": "PLAIN", "sasl.username": env("KAFKA_USER"), "sasl.password": env("KAFKA_PASSWORD")}
+    conf = {"bootstrap.servers": env("KAFKA_BOOTSTRAP"), "security.protocol": "SASL_SSL"}
+    if os.environ.get("KAFKA_MECHANISM", "PLAIN") == "AWS_MSK_IAM":
+        # S4: MSK's IAM login over OAUTHBEARER; AWS's signer makes a token from the AWS key, renewed before it ends
+        from aws_msk_iam_sasl_signer import MSKAuthTokenProvider
+        region = env("KAFKA_REGION")
+
+        def token(_):
+            t, expires_ms = MSKAuthTokenProvider.generate_auth_token(region)
+            return t, expires_ms / 1000
+
+        conf.update({"sasl.mechanisms": "OAUTHBEARER", "oauth_cb": token})
+    else:
+        conf.update({"sasl.mechanisms": "PLAIN", "sasl.username": env("KAFKA_USER"),
+                     "sasl.password": env("KAFKA_PASSWORD")})
     if os.environ.get("KAFKA_CA"):
         conf["ssl.ca.location"] = os.environ["KAFKA_CA"]
     return conf
