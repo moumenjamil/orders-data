@@ -136,7 +136,8 @@ def apply(db, e):
 
 
 def main():
-    topic, dlq = env("TOPIC"), env("DLQ_TOPIC")
+    topic = env("TOPIC")
+    dlq = "order-events-dlq"   # one place for all dead letters: the support team reads only this topic
     first_wait, idle = int(env("FIRST_WAIT", "600")), int(env("IDLE", "60"))
     db = connect_mysql()
     ensure_tables(db)
