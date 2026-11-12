@@ -43,7 +43,7 @@ def main():
     with psycopg2.connect(os.environ["SHOP_PG_URL"]) as src, src.cursor() as cur:
         cur.execute(EXTRACT)
         rows = cur.fetchall()
-    print(f"extracted {len(rows)} orders from the shop")
+    print(f"extracted {len(rows)} orders from the shop for {day}")
 
     db = pymysql.connect(host=os.environ["MYSQL_HOST"], port=int(os.environ["MYSQL_PORT"]),
                          user=os.environ["MYSQL_USER"], password=os.environ["MYSQL_PASSWORD"],
