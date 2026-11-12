@@ -1,4 +1,5 @@
 """orders_daily_aws — the orders pipeline on AWS (D7-45).
+# D7-71 lab: two tests on one pipeline share one run; no change in behaviour.
 
 The same business flow as orders_daily, on AWS services:
 source Postgres (shop.orders)
