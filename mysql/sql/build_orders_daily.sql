@@ -1,3 +1,4 @@
+-- D7-70 lab: a PR touching two pipelines (AWS and MySQL); no change in behaviour.
 -- One row per order day; rebuilt in full on each run.
 -- orders_daily on MySQL (T6): one row per order day, from the run's slice of landing.orders.
 -- The target database (dev, ci or prod) and the run's day are filled in by the job.
