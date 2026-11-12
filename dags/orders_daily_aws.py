@@ -79,6 +79,11 @@ def orders_daily_aws():
         writer.writerows([[_utc(v) for v in r] for r in rows])
 
         s3 = S3Hook(aws_conn_id=AWS_CONN)
+        # D7-68 lab check (never merged): the platform fails once, like a real blip
+        marker = "lab/d7-68-blip-once"
+        if not s3.check_for_key(marker, bucket_name=raw):
+            s3.load_string("1", key=marker, bucket_name=raw, replace=True)
+            raise RuntimeError("503 Service Unavailable (lab stand-in for a platform blip, D7-68)")
         prefix = f"orders/dt={run_date}/"
         old = s3.list_keys(bucket_name=raw, prefix=prefix) or []
         if old:

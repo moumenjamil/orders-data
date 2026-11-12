@@ -39,6 +39,8 @@ def main():
     if target not in ("dev", "ci", "prod"):
         raise ValueError(f"unknown target {target} (dev, ci or prod)")
     day = os.environ.get("RUN_DATE") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # D7-68 lab check (never merged): the network drops, as a platform does
+    raise ConnectionResetError("[Errno 104] Connection reset by peer (lab stand-in, D7-68)")
 
     with psycopg2.connect(os.environ["SHOP_PG_URL"]) as src, src.cursor() as cur:
         cur.execute(EXTRACT)
