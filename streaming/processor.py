@@ -186,7 +186,7 @@ def main():
     consumer.close()
     took = time.time() - started
     print(f"done: {seen} events read, {applied} applied, {repeats} repeats ignored, {rejected} rejected"
-          f" in {took:.0f} s" + (" (" + ", ".join(f"{k} {v}" for k, v in sorted(by_type.items())) + ")" if by_type else ""),
+          f" in {took:.0f} s ({seen / took if took else 0:.1f} events/s)" + (" (" + ", ".join(f"{k} {v}" for k, v in sorted(by_type.items())) + ")" if by_type else ""),
           flush=True)
 
 
